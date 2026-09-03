@@ -134,6 +134,18 @@ public final class ShareActivityStateTest {
         assertFalse(scenario.success);
     }
 
+    @Test
+    public void retryRunsCreateFreshPingAndUploadOperations() {
+        Scenario scenario = new Scenario(UploadResult.success(200), UploadResult.success(201),
+                UploadResult.success(200), UploadResult.success(201));
+
+        scenario.run(1);
+        scenario.run(1);
+
+        assertTrue(scenario.pings == 2);
+        assertTrue(scenario.uploads == 2);
+    }
+
     private static final class Scenario implements ShareTransferCoordinator.Factory,
             ShareTransferCoordinator.Callback {
         private final List<UploadResult> results;
