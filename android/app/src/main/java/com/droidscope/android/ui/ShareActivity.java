@@ -5,6 +5,8 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
+import android.widget.Button;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.droidscope.android.model.ShareFile;
@@ -20,14 +22,51 @@ import java.util.List;
 
 public final class ShareActivity extends Activity {
     private static final String TAG = "DroidScope";
+    private TextView statusView;
+    private Button cancelButton;
+    private volatile UploadManager currentUpload;
+    private volatile boolean canceled;
+    private volatile boolean terminal;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        TextView view = new TextView(this);
-        view.setPadding(48, 48, 48, 48);
-        setContentView(view);
-        List<ShareFile> files = parseIntent(getIntent());
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        int padding = 48;
+        layout.setPadding(padding, padding, padding, padding);
+        statusView = new TextView(this);
+        cancelButton = new Button(this);
+        cancelButton.setText("取消发送");
+        cancelButton.setTextAppearance(this, R.style.ShareCancelButton);
+        cancelButton.setOnClickListener(ignored -> cancelTransfer());
+        layout.addView(statusView);
+        layout.addView(cancelButton);
+        setContentView(layout);
+        statusView.setText("正在准备发送…");
+        Intent incoming = getIntent();
+        new Thread(() -> transfer(incoming), "usb-file-share-transfer").start();
+    }
+
+    @Override
+    protected void onDestroy() {
+        canceled = true;
+        UploadManager manager = currentUpload;
+        if (manager != null) manager.cancel();
+        super.onDestroy();
+    }
+
+    private void cancelTransfer() {
+        if (terminal) return;
+        canceled = true;
+        UploadManager manager = currentUpload;
+        if (manager != null) manager.cancel();
+        showTerminal("已取消发送");
+    }
+
+    private void transfer(Intent intent) {
+        List<ShareFile> files = parseIntent(intent);
+        if (canceled) return;
         StringBuilder summary = new StringBuilder();
         for (ShareFile file : files) {
             Log.i(TAG, "URI=" + file.getUri());
@@ -37,37 +76,60 @@ public final class ShareActivity extends Activity {
             summary.append(file.getDisplayName()).append("\n");
         }
         final String metadata = files.isEmpty() ? "未找到可分享文件" : summary.toString();
-        view.setText("正在连接电脑…\n" + metadata);
-        new Thread(() -> transfer(files, metadata, view), "usb-file-share-transfer").start();
-    }
-
-    private void transfer(List<ShareFile> files, String metadata, TextView view) {
+        showStatus("正在连接电脑…\n" + metadata);
+        if (canceled) return;
         UploadResult pingResult = new PingClient().ping();
+        if (canceled) return;
         if (!pingResult.isSuccess()) {
-            String failure = TransferStatusText.failure(pingResult);
-            runOnUiThread(() -> view.setText(failure + "\n" + metadata));
+            showTerminal(TransferStatusText.failure(pingResult) + "\n" + metadata);
             return;
         }
         if (files.isEmpty()) {
-            runOnUiThread(() -> view.setText("电脑已连接\n" + metadata));
+            showTerminal("电脑已连接\n" + metadata);
             return;
         }
-        UploadManager manager = new UploadManager(getContentResolver());
         for (int i = 0; i < files.size(); i++) {
+            if (canceled) return;
             final int fileNumber = i + 1;
             ShareFile file = files.get(i);
-            ProgressListener listener = (sent, total) -> runOnUiThread(() -> {
+            UploadManager manager = new UploadManager(getContentResolver());
+            currentUpload = manager;
+            if (canceled) {
+                manager.cancel();
+                return;
+            }
+            ProgressListener listener = (sent, total) -> {
                 long percent = total <= 0 ? 0 : sent * 100 / total;
-                view.setText("上传第 " + fileNumber + "/" + files.size() + " 个：" + percent + "%\n" + metadata);
-            });
+                showStatus("上传第 " + fileNumber + "/" + files.size() + " 个：" + percent + "%\n" + metadata);
+            };
             UploadResult result = manager.upload(new UploadTask(file), listener);
+            if (currentUpload == manager) currentUpload = null;
+            if (canceled || result.getError() == com.droidscope.android.transfer.UploadError.CANCELED) {
+                if (!terminal) showTerminal("已取消发送\n" + metadata);
+                return;
+            }
             if (!result.isSuccess()) {
                 String failure = TransferStatusText.failure(result);
-                runOnUiThread(() -> view.setText("第 " + fileNumber + " 个文件发送失败：" + failure + "\n" + metadata));
+                showTerminal("第 " + fileNumber + " 个文件发送失败：" + failure + "\n" + metadata);
                 return;
             }
         }
-        runOnUiThread(() -> view.setText("全部发送成功（" + files.size() + " 个）\n" + metadata));
+        showTerminal("全部发送成功（" + files.size() + " 个）\n" + metadata);
+    }
+
+    private void showStatus(String text) {
+        runOnUiThread(() -> {
+            if (!terminal) statusView.setText(text);
+        });
+    }
+
+    private void showTerminal(String text) {
+        runOnUiThread(() -> {
+            if (terminal) return;
+            terminal = true;
+            statusView.setText(text);
+            cancelButton.setEnabled(false);
+        });
     }
 
     private List<ShareFile> parseIntent(Intent intent) {
