@@ -65,6 +65,7 @@ public final class ShareActivityStateTest {
 
         assertTrue(state.isCanceled());
         assertFalse(state.canRetry());
+        assertFalse(state.canShowFailure());
     }
 
     @Test

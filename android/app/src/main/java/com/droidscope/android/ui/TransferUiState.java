@@ -48,6 +48,10 @@ final class TransferUiState {
         return !canceled && !destroyed && terminal && retryableFailure;
     }
 
+    synchronized boolean canShowFailure() {
+        return !canceled && !destroyed && terminal;
+    }
+
     synchronized boolean beginRetry() {
         if (!canRetry()) return false;
         terminal = false;

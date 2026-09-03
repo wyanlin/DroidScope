@@ -194,6 +194,7 @@ public final class ShareActivity extends Activity {
     private void showPresentedFailure(String text, boolean retryable) {
         runOnUiThread(() -> {
             if (isFinishing() || isDestroyed()) return;
+            if (!transferUiState.canShowFailure()) return;
             statusView.setText(text);
             retryButton.setVisibility(retryable ? View.VISIBLE : View.GONE);
             cancelButton.setEnabled(true);
