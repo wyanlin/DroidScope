@@ -174,16 +174,20 @@ public final class ShareActivityStateTest {
         CountDownLatch oldStarted = new CountDownLatch(1);
         CountDownLatch releaseOld = new CountDownLatch(1);
         CountDownLatch nextRan = new CountDownLatch(1);
-        Thread first = new Thread(() -> new ShareTransferEntry(gate, old).run(() -> {
+        ShareTransferEntry.Listener listener = new ShareTransferEntry.Listener() {
+            @Override public void onAcquired() { }
+            @Override public void onReleased() { }
+        };
+        Thread first = new Thread(() -> new ShareTransferEntry(gate, old, listener).run(() -> {
             oldStarted.countDown(); try { releaseOld.await(); } catch (InterruptedException ignored) { }
         }));
         first.start(); assertTrue(oldStarted.await(1, TimeUnit.SECONDS));
-        Thread second = new Thread(() -> new ShareTransferEntry(gate, next)
+        Thread second = new Thread(() -> new ShareTransferEntry(gate, next, listener)
                 .run(nextRan::countDown));
         second.start(); assertFalse(nextRan.await(100, TimeUnit.MILLISECONDS));
         releaseOld.countDown(); assertTrue(nextRan.await(1, TimeUnit.SECONDS));
         TransferUiState canceled = new TransferUiState(); canceled.destroy();
-        assertFalse(new ShareTransferEntry(gate, canceled).run(nextRan::countDown));
+        assertFalse(new ShareTransferEntry(gate, canceled, listener).run(nextRan::countDown));
         first.join(1000); second.join(1000);
     }
 

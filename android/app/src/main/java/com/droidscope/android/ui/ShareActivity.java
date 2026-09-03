@@ -86,8 +86,11 @@ public final class ShareActivity extends Activity {
         Thread worker = new Thread(() -> {
             boolean acquired = false;
             try {
-                acquired = new ShareTransferEntry(TRANSFER_GATE, transferUiState)
-                        .run(() -> transfer(intent));
+                acquired = new ShareTransferEntry(TRANSFER_GATE, transferUiState,
+                        new ShareTransferEntry.Listener() {
+                            @Override public void onAcquired() { ownsTransferGate = true; }
+                            @Override public void onReleased() { ownsTransferGate = false; }
+                        }).run(() -> transfer(intent));
             } finally {
                 ownsTransferGate = false;
                 if (transferThread == Thread.currentThread()) transferThread = null;
