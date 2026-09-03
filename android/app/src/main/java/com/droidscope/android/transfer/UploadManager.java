@@ -9,7 +9,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 public final class UploadManager {
@@ -43,8 +45,8 @@ public final class UploadManager {
     private boolean canceled;
     private int activeUploads;
     private int inFlightCalls;
-    private final Set<Thread> uploadThreads = new HashSet<>();
-    private HttpURLConnection currentConnection;
+    private final Map<Thread, Integer> uploadThreadCounts = new HashMap<>();
+    private final Set<HttpURLConnection> currentConnections = new HashSet<>();
 
     public UploadManager(ContentResolver resolver) {
         this(resolver, "http://127.0.0.1:9527/api/v1/files");
@@ -71,15 +73,15 @@ public final class UploadManager {
     }
 
     public void cancel() {
-        HttpURLConnection connection;
+        HttpURLConnection[] connections;
         boolean calledFromUploadThread;
         synchronized (stateLock) {
             canceled = true;
-            connection = currentConnection;
-            calledFromUploadThread = uploadThreads.contains(Thread.currentThread());
+            connections = currentConnections.toArray(new HttpURLConnection[0]);
+            calledFromUploadThread = uploadThreadCounts.containsKey(Thread.currentThread());
         }
         observer.onCancelRequested();
-        if (connection != null) connection.disconnect();
+        for (HttpURLConnection connection : connections) connection.disconnect();
         if (calledFromUploadThread) return;
         boolean interrupted = false;
         synchronized (stateLock) {
@@ -156,7 +158,9 @@ public final class UploadManager {
         synchronized (stateLock) {
             if (canceled) return false;
             activeUploads++;
-            uploadThreads.add(Thread.currentThread());
+            Thread thread = Thread.currentThread();
+            Integer count = uploadThreadCounts.get(thread);
+            uploadThreadCounts.put(thread, count == null ? 1 : count + 1);
             return true;
         }
     }
@@ -165,7 +169,10 @@ public final class UploadManager {
         synchronized (stateLock) {
             boolean wasCanceled = canceled;
             activeUploads--;
-            uploadThreads.remove(Thread.currentThread());
+            Thread thread = Thread.currentThread();
+            Integer count = uploadThreadCounts.get(thread);
+            if (count == 1) uploadThreadCounts.remove(thread);
+            else if (count != null) uploadThreadCounts.put(thread, count - 1);
             stateLock.notifyAll();
             return wasCanceled ? canceledResult() : result;
         }
@@ -186,7 +193,7 @@ public final class UploadManager {
             connection = connectionFactory.open(file);
             synchronized (stateLock) {
                 disconnect = canceled;
-                if (!disconnect) currentConnection = connection;
+                if (!disconnect) currentConnections.add(connection);
             }
             if (disconnect) {
                 connection.disconnect();
@@ -203,7 +210,7 @@ public final class UploadManager {
 
     private void clearConnection(HttpURLConnection connection) {
         synchronized (stateLock) {
-            if (currentConnection == connection) currentConnection = null;
+            currentConnections.remove(connection);
         }
     }
 

@@ -22,6 +22,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class UploadManagerTest {
     @Test
@@ -169,6 +170,58 @@ public final class UploadManagerTest {
         }
     }
 
+    @Test
+    public void cancelFromNestedUploadProgressListenerDoesNotForgetOuterUploadThread() throws Exception {
+        ControlledConnection outerConnection = new ControlledConnection();
+        ControlledConnection nestedConnection = new ControlledConnection();
+        AtomicInteger nextConnection = new AtomicInteger();
+        AtomicReference<UploadResult> nestedResult = new AtomicReference<>();
+        UploadManager manager = new UploadManager(ignored -> oneByteInput(), ignored ->
+                nextConnection.getAndIncrement() == 0 ? outerConnection : nestedConnection);
+        ExecutorService uploads = Executors.newSingleThreadExecutor();
+        try {
+            Future<UploadResult> outerUpload = uploads.submit(() -> manager.upload(task(1), (sent, total) -> {
+                nestedResult.set(manager.upload(task(1),
+                        (nestedSent, nestedTotal) -> manager.cancel()));
+                manager.cancel();
+            }));
+
+            assertCanceled(outerUpload);
+            assertEquals(UploadError.CANCELED, nestedResult.get().getError());
+            assertTrue(outerConnection.disconnected);
+            assertTrue(nestedConnection.disconnected);
+        } finally {
+            uploads.shutdownNow();
+        }
+    }
+
+    @Test
+    public void cancelDisconnectsAllConnectionsFromConcurrentUploads() throws Exception {
+        BlockingConnection firstConnection = new BlockingConnection();
+        BlockingConnection secondConnection = new BlockingConnection();
+        AtomicInteger nextConnection = new AtomicInteger();
+        UploadManager manager = new UploadManager(ignored -> oneByteInput(), ignored ->
+                nextConnection.getAndIncrement() == 0 ? firstConnection : secondConnection);
+        ExecutorService uploads = Executors.newFixedThreadPool(2);
+        ExecutorService cancellations = Executors.newSingleThreadExecutor();
+        try {
+            Future<UploadResult> firstUpload = uploads.submit(() -> manager.upload(task(1), null));
+            Future<UploadResult> secondUpload = uploads.submit(() -> manager.upload(task(1), null));
+            assertTrue(firstConnection.outputStreamStarted.await(3, TimeUnit.SECONDS));
+            assertTrue(secondConnection.outputStreamStarted.await(3, TimeUnit.SECONDS));
+
+            cancellations.submit(manager::cancel).get(3, TimeUnit.SECONDS);
+
+            assertCanceled(firstUpload);
+            assertCanceled(secondUpload);
+            assertTrue(firstConnection.disconnected);
+            assertTrue(secondConnection.disconnected);
+        } finally {
+            uploads.shutdownNow();
+            cancellations.shutdownNow();
+        }
+    }
+
     private static UploadResult cancelAtCall(Fixture fixture) throws Exception {
         CallGate gate = fixture.gate;
         ExecutorService uploads = Executors.newSingleThreadExecutor();
@@ -303,6 +356,32 @@ public final class UploadManagerTest {
         }
         @Override public int getResponseCode() { responseCalls.incrementAndGet(); return 200; }
         @Override public void disconnect() { disconnected = true; }
+        @Override public boolean usingProxy() { return false; }
+        @Override public void connect() { }
+    }
+
+    private static final class BlockingConnection extends HttpURLConnection {
+        final CountDownLatch outputStreamStarted = new CountDownLatch(1);
+        final CountDownLatch releaseOutputStream = new CountDownLatch(1);
+        volatile boolean disconnected;
+        BlockingConnection() throws IOException { super(new URL("http://127.0.0.1/upload")); }
+        @Override public OutputStream getOutputStream() throws IOException {
+            outputStreamStarted.countDown();
+            try {
+                if (!releaseOutputStream.await(3, TimeUnit.SECONDS)) {
+                    throw new IOException("output stream was not released");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException(e);
+            }
+            return new OutputStream() { @Override public void write(int value) { } };
+        }
+        @Override public int getResponseCode() { return 200; }
+        @Override public void disconnect() {
+            disconnected = true;
+            releaseOutputStream.countDown();
+        }
         @Override public boolean usingProxy() { return false; }
         @Override public void connect() { }
     }
