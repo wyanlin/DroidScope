@@ -13,6 +13,11 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 public final class UploadResultTest {
     @Test
@@ -102,6 +107,42 @@ public final class UploadResultTest {
             assertEquals(503, result.getHttpCode());
             assertEquals("Service Unavailable", result.getMessage());
         } finally {
+            server.close();
+        }
+    }
+
+    @Test
+    public void cancelDuringPingDisconnectsConnectionAndReturnsCanceled() throws Exception {
+        ServerSocket server = new ServerSocket(0);
+        CountDownLatch requestReceived = new CountDownLatch(1);
+        CountDownLatch clientDisconnected = new CountDownLatch(1);
+        Thread responder = new Thread(() -> {
+            try (Socket socket = server.accept()) {
+                socket.setSoTimeout(3000);
+                while (socket.getInputStream().read() != -1) {
+                    requestReceived.countDown();
+                }
+            } catch (IOException ignored) {
+                // HttpURLConnection.disconnect may surface as a socket exception.
+            } finally {
+                clientDisconnected.countDown();
+            }
+        });
+        responder.start();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            PingClient client = new PingClient("http://127.0.0.1:" + server.getLocalPort() + "/ping", 5000);
+            Future<UploadResult> ping = executor.submit(client::ping);
+            assertTrue(requestReceived.await(3, TimeUnit.SECONDS));
+
+            client.cancel();
+
+            UploadResult result = ping.get(3, TimeUnit.SECONDS);
+            assertFalse(result.isSuccess());
+            assertEquals(UploadError.CANCELED, result.getError());
+            assertTrue(clientDisconnected.await(3, TimeUnit.SECONDS));
+        } finally {
+            executor.shutdownNow();
             server.close();
         }
     }

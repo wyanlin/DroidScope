@@ -25,6 +25,7 @@ public final class ShareActivity extends Activity {
     private TextView statusView;
     private Button cancelButton;
     private volatile UploadManager currentUpload;
+    private volatile PingClient currentPing;
     private volatile boolean canceled;
     private volatile boolean terminal;
 
@@ -51,7 +52,7 @@ public final class ShareActivity extends Activity {
     @Override
     protected void onDestroy() {
         canceled = true;
-        cancelCurrentUploadAsync();
+        cancelCurrentTransferAsync();
         super.onDestroy();
     }
 
@@ -59,13 +60,17 @@ public final class ShareActivity extends Activity {
         if (terminal) return;
         canceled = true;
         showTerminal("已取消发送");
-        cancelCurrentUploadAsync();
+        cancelCurrentTransferAsync();
     }
 
-    private void cancelCurrentUploadAsync() {
+    private void cancelCurrentTransferAsync() {
+        PingClient ping = currentPing;
         UploadManager manager = currentUpload;
-        if (manager == null) return;
-        new Thread(manager::cancel, "usb-file-share-cancel").start();
+        if (ping == null && manager == null) return;
+        new Thread(() -> {
+            if (ping != null) ping.cancel();
+            if (manager != null) manager.cancel();
+        }, "usb-file-share-cancel").start();
     }
 
     private void transfer(Intent intent) {
@@ -82,7 +87,14 @@ public final class ShareActivity extends Activity {
         final String metadata = files.isEmpty() ? "未找到可分享文件" : summary.toString();
         showStatus("正在连接电脑…\n" + metadata);
         if (canceled) return;
-        UploadResult pingResult = new PingClient().ping();
+        PingClient ping = new PingClient();
+        currentPing = ping;
+        if (canceled) {
+            ping.cancel();
+            return;
+        }
+        UploadResult pingResult = ping.ping();
+        if (currentPing == ping) currentPing = null;
         if (canceled) return;
         if (!pingResult.isSuccess()) {
             showTerminal(TransferStatusText.failure(pingResult) + "\n" + metadata);
