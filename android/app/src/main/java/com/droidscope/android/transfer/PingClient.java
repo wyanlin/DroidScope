@@ -17,11 +17,7 @@ public final class PingClient {
         this.timeoutMillis = timeoutMillis;
     }
 
-    public boolean ping() throws IOException {
-        return pingResult().isSuccess();
-    }
-
-    public UploadResult pingResult() {
+    public UploadResult ping() {
         HttpURLConnection connection = null;
         try {
             connection = (HttpURLConnection) new URL(endpoint).openConnection();

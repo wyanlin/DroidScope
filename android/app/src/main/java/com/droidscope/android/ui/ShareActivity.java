@@ -10,6 +10,7 @@ import android.widget.TextView;
 import com.droidscope.android.model.ShareFile;
 import com.droidscope.android.transfer.PingClient;
 import com.droidscope.android.transfer.ProgressListener;
+import com.droidscope.android.transfer.UploadError;
 import com.droidscope.android.transfer.UploadManager;
 import com.droidscope.android.transfer.UploadResult;
 import com.droidscope.android.transfer.UploadTask;
@@ -17,7 +18,6 @@ import com.droidscope.android.util.UriUtils;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.io.IOException;
 
 public final class ShareActivity extends Activity {
     private static final String TAG = "DroidScope";
@@ -43,34 +43,35 @@ public final class ShareActivity extends Activity {
     }
 
     private void transfer(List<ShareFile> files, String metadata, TextView view) {
-        try {
-            if (!new PingClient().ping()) {
-                runOnUiThread(() -> view.setText("电脑未连接\n" + metadata));
-                return;
-            }
-            if (files.isEmpty()) {
-                runOnUiThread(() -> view.setText("电脑已连接\n" + metadata));
-                return;
-            }
-            UploadManager manager = new UploadManager(getContentResolver());
-            for (int i = 0; i < files.size(); i++) {
-                final int fileNumber = i + 1;
-                ShareFile file = files.get(i);
-                ProgressListener listener = (sent, total) -> runOnUiThread(() -> {
-                    long percent = total <= 0 ? 0 : sent * 100 / total;
-                    view.setText("上传第 " + fileNumber + "/" + files.size() + " 个：" + percent + "%\n" + metadata);
-                });
-                UploadResult result = manager.upload(new UploadTask(file), listener);
-                if (!result.isSuccess()) {
-                    runOnUiThread(() -> view.setText("第 " + fileNumber + " 个文件发送失败：" + result.getMessage() + "\n" + metadata));
-                    return;
-                }
-            }
-            runOnUiThread(() -> view.setText("全部发送成功（" + files.size() + " 个）\n" + metadata));
-        } catch (IOException e) {
-            Log.w(TAG, "TRANSFER_FAILED=" + e.getMessage());
-            runOnUiThread(() -> view.setText("电脑未连接\n" + metadata));
+        UploadResult pingResult = new PingClient().ping();
+        if (!pingResult.isSuccess()) {
+            String failure = pingResult.getError() == UploadError.TIMEOUT ? "连接电脑超时"
+                    : pingResult.getError() == UploadError.SERVER_ERROR
+                    ? "电脑服务异常：" + pingResult.getMessage()
+                    : pingResult.getError() == UploadError.PC_NOT_CONNECTED ? "电脑未连接"
+                    : "连接失败：" + pingResult.getMessage();
+            runOnUiThread(() -> view.setText(failure + "\n" + metadata));
+            return;
         }
+        if (files.isEmpty()) {
+            runOnUiThread(() -> view.setText("电脑已连接\n" + metadata));
+            return;
+        }
+        UploadManager manager = new UploadManager(getContentResolver());
+        for (int i = 0; i < files.size(); i++) {
+            final int fileNumber = i + 1;
+            ShareFile file = files.get(i);
+            ProgressListener listener = (sent, total) -> runOnUiThread(() -> {
+                long percent = total <= 0 ? 0 : sent * 100 / total;
+                view.setText("上传第 " + fileNumber + "/" + files.size() + " 个：" + percent + "%\n" + metadata);
+            });
+            UploadResult result = manager.upload(new UploadTask(file), listener);
+            if (!result.isSuccess()) {
+                runOnUiThread(() -> view.setText("第 " + fileNumber + " 个文件发送失败：" + result.getMessage() + "\n" + metadata));
+                return;
+            }
+        }
+        runOnUiThread(() -> view.setText("全部发送成功（" + files.size() + " 个）\n" + metadata));
     }
 
     private List<ShareFile> parseIntent(Intent intent) {
