@@ -146,6 +146,37 @@ public final class ShareActivityStateTest {
         assertTrue(scenario.uploads == 2);
     }
 
+    @Test
+    public void presenterPortReceivesFinishFailureRetryAndCancelStates() {
+        Port port = new Port();
+        TransferUiState state = new TransferUiState();
+        ShareTransferPresenter presenter = new ShareTransferPresenter(state, port);
+
+        presenter.onFailure(UploadResult.failure(UploadError.TIMEOUT, -1, "timeout"), 2);
+        assertTrue(port.failure.contains("连接电脑超时"));
+        assertTrue(port.retryable);
+        assertTrue(state.beginRetry());
+        presenter.onCanceled();
+        assertTrue(port.canceled);
+        assertFalse(state.canRetry());
+
+        new ShareTransferPresenter(new TransferUiState(), port).onSuccess(1);
+        assertTrue(port.finished == 1);
+    }
+
+    private static final class Port implements ShareTransferPresenter.Port {
+        String failure;
+        boolean retryable;
+        boolean canceled;
+        int finished;
+        @Override public void showFailure(String text, boolean canRetry) {
+            failure = text; retryable = canRetry;
+        }
+        @Override public void showEmpty() { }
+        @Override public void finishSuccess(int count) { finished = count; }
+        @Override public void showCanceled() { canceled = true; }
+    }
+
     private static final class Scenario implements ShareTransferCoordinator.Factory,
             ShareTransferCoordinator.Callback {
         private final List<UploadResult> results;
