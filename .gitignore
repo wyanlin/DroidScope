@@ -27,6 +27,9 @@ Thumbs.db
 .codex/
 .agents/
 
+# Local Git worktrees
+.worktrees/
+
 # Internal plans kept out of the public repository
 ROADMAP.local.md
 PLAN.local.md
