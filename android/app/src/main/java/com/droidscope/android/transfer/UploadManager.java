@@ -52,9 +52,12 @@ public final class UploadManager {
                 }
             }
             int code = connection.getResponseCode();
-            return code >= 200 && code < 300 ? UploadResult.success(code) : UploadResult.failure(code);
-        } catch (IOException | SecurityException | IllegalArgumentException e) {
-            return UploadResult.failure(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+            return code >= 200 && code < 300 ? UploadResult.success(code)
+                    : UploadResult.failure(code, connection.getResponseMessage());
+        } catch (IOException e) {
+            return UploadResult.failure(e);
+        } catch (SecurityException | IllegalArgumentException e) {
+            return UploadResult.failure(UploadError.UNKNOWN, -1, e.getMessage());
         } finally {
             if (connection != null) connection.disconnect();
         }

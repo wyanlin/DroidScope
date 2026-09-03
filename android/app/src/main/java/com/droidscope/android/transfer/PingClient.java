@@ -18,14 +18,23 @@ public final class PingClient {
     }
 
     public boolean ping() throws IOException {
-        HttpURLConnection connection = (HttpURLConnection) new URL(endpoint).openConnection();
-        connection.setRequestMethod("GET");
-        connection.setConnectTimeout(timeoutMillis);
-        connection.setReadTimeout(timeoutMillis);
+        return pingResult().isSuccess();
+    }
+
+    public UploadResult pingResult() {
+        HttpURLConnection connection = null;
         try {
-            return connection.getResponseCode() == HttpURLConnection.HTTP_OK;
+            connection = (HttpURLConnection) new URL(endpoint).openConnection();
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout(timeoutMillis);
+            connection.setReadTimeout(timeoutMillis);
+            int code = connection.getResponseCode();
+            return code >= 200 && code < 300 ? UploadResult.success(code)
+                    : UploadResult.failure(code, connection.getResponseMessage());
+        } catch (IOException e) {
+            return UploadResult.failure(e);
         } finally {
-            connection.disconnect();
+            if (connection != null) connection.disconnect();
         }
     }
 }
