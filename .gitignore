@@ -11,6 +11,9 @@ build-out/
 # Runtime receive and test artifacts
 PhoneReceive/
 receive/
+*.logenc
+*.dat
+*.apk
 receiver-test.err
 receiver-test.log
 

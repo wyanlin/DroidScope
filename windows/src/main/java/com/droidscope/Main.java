@@ -15,7 +15,8 @@ public final class Main {
     private Main() {}
 
     public static void main(String[] args) throws Exception {
-        Path directory = Path.of(args.length > 0 ? args[0] : "D:\\ihblu\\wyrepo\\USB_File_Share\\PhoneReceive");
+        Path directory = Path.of(args.length > 0 ? args[0]
+                : Path.of(System.getProperty("user.home"), "DroidScope", "PhoneReceive").toString());
         ReceiverServer server;
         try {
             server = new ReceiverServer(9527, directory);
