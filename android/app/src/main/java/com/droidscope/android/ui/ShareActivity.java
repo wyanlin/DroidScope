@@ -23,11 +23,14 @@ import java.util.List;
 
 public final class ShareActivity extends Activity {
     private static final String TAG = "DroidScope";
+    private static final TransferGate TRANSFER_GATE = new TransferGate();
     private TextView statusView;
     private Button retryButton;
     private Button cancelButton;
     private volatile UploadManager currentUpload;
     private volatile PingClient currentPing;
+    private volatile Thread transferThread;
+    private volatile boolean ownsTransferGate;
     private final TransferUiState transferUiState = new TransferUiState();
     private Intent transferIntent;
 
@@ -59,6 +62,7 @@ public final class ShareActivity extends Activity {
     @Override
     protected void onDestroy() {
         transferUiState.destroy();
+        interruptWaitingTransfer();
         cancelCurrentTransferAsync();
         super.onDestroy();
     }
@@ -66,6 +70,7 @@ public final class ShareActivity extends Activity {
     private void cancelTransfer() {
         if (!transferUiState.cancelAndClaimTerminal()) return;
         showClaimedTerminal("已取消发送");
+        interruptWaitingTransfer();
         cancelCurrentTransferAsync();
     }
 
@@ -78,7 +83,29 @@ public final class ShareActivity extends Activity {
     }
 
     private void startTransfer(Intent intent) {
-        new Thread(() -> transfer(intent), "usb-file-share-transfer").start();
+        Thread worker = new Thread(() -> {
+            boolean acquired = false;
+            try {
+                acquired = TRANSFER_GATE.acquire(transferUiState::isCanceled);
+                if (acquired) {
+                    ownsTransferGate = true;
+                    if (!transferUiState.isCanceled()) transfer(intent);
+                }
+            } finally {
+                if (acquired) {
+                    ownsTransferGate = false;
+                    TRANSFER_GATE.release();
+                }
+                if (transferThread == Thread.currentThread()) transferThread = null;
+            }
+        }, "usb-file-share-transfer");
+        transferThread = worker;
+        worker.start();
+    }
+
+    private void interruptWaitingTransfer() {
+        Thread worker = transferThread;
+        if (worker != null && !ownsTransferGate) worker.interrupt();
     }
 
     private void cancelCurrentTransferAsync() {

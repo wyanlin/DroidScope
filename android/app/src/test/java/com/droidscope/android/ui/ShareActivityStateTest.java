@@ -9,6 +9,9 @@ import com.droidscope.android.transfer.UploadResult;
 
 import org.junit.Test;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
 public final class ShareActivityStateTest {
     @Test
     public void retryableNetworkFailureAllowsRetryAndReopensUiState() {
@@ -59,5 +62,48 @@ public final class ShareActivityStateTest {
 
         assertTrue(state.isCanceled());
         assertFalse(state.canRetry());
+    }
+
+    @Test
+    public void rotatedActivityWaitsForOldTransferToReleaseGateBeforeStarting() throws Exception {
+        TransferGate gate = new TransferGate();
+        TransferUiState oldState = new TransferUiState();
+        TransferUiState newState = new TransferUiState();
+        CountDownLatch newAcquired = new CountDownLatch(1);
+        Thread newActivity = new Thread(() -> {
+            if (gate.acquire(newState::isCanceled)) newAcquired.countDown();
+        });
+
+        assertTrue(gate.acquire(oldState::isCanceled));
+        newActivity.start();
+        assertFalse(newAcquired.await(100, TimeUnit.MILLISECONDS));
+
+        oldState.destroy();
+        gate.release();
+
+        assertTrue(newAcquired.await(1, TimeUnit.SECONDS));
+        gate.release();
+        newActivity.join(1000);
+    }
+
+    @Test
+    public void destroyedActivityWaitingForGateNeverStartsTransfer() throws Exception {
+        TransferGate gate = new TransferGate();
+        TransferUiState oldState = new TransferUiState();
+        TransferUiState waitingState = new TransferUiState();
+        CountDownLatch waitingReturned = new CountDownLatch(1);
+
+        assertTrue(gate.acquire(oldState::isCanceled));
+        Thread waitingActivity = new Thread(() -> {
+            assertFalse(gate.acquire(waitingState::isCanceled));
+            waitingReturned.countDown();
+        });
+        waitingActivity.start();
+        waitingState.destroy();
+        waitingActivity.interrupt();
+
+        assertTrue(waitingReturned.await(1, TimeUnit.SECONDS));
+        gate.release();
+        waitingActivity.join(1000);
     }
 }
