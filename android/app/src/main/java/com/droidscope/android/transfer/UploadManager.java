@@ -16,8 +16,13 @@ public final class UploadManager {
         InputStream open(ShareFile file) throws IOException;
     }
 
+    interface ConnectionFactory {
+        HttpURLConnection open(ShareFile file) throws IOException;
+    }
+
     private final InputStreamFactory inputFactory;
-    private final String endpoint;
+    private final ConnectionFactory connectionFactory;
+    private final Object cancellationLock = new Object();
     private volatile boolean canceled;
     private volatile HttpURLConnection currentConnection;
 
@@ -26,17 +31,25 @@ public final class UploadManager {
     }
 
     UploadManager(ContentResolver resolver, String endpoint) {
-        this(file -> resolver.openInputStream(file.getUri()), endpoint);
+        this(file -> resolver.openInputStream(file.getUri()),
+                file -> (HttpURLConnection) new URL(endpoint).openConnection());
     }
 
     UploadManager(InputStreamFactory inputFactory, String endpoint) {
+        this(inputFactory, file -> (HttpURLConnection) new URL(endpoint).openConnection());
+    }
+
+    UploadManager(InputStreamFactory inputFactory, ConnectionFactory connectionFactory) {
         this.inputFactory = inputFactory;
-        this.endpoint = endpoint;
+        this.connectionFactory = connectionFactory;
     }
 
     public void cancel() {
-        canceled = true;
-        HttpURLConnection connection = currentConnection;
+        HttpURLConnection connection;
+        synchronized (cancellationLock) {
+            canceled = true;
+            connection = currentConnection;
+        }
         if (connection != null) connection.disconnect();
     }
 
@@ -48,9 +61,8 @@ public final class UploadManager {
         try (InputStream input = inputFactory.open(file)) {
             if (input == null) return UploadResult.failure("cannot open URI");
             if (canceled) return canceledResult();
-            connection = (HttpURLConnection) new URL(endpoint).openConnection();
-            currentConnection = connection;
-            if (canceled) return canceledResult();
+            connection = connectionFactory.open(file);
+            if (!registerConnection(connection)) return canceledResult();
             connection.setRequestMethod("POST");
             connection.setDoOutput(true);
             connection.setConnectTimeout(2000);
@@ -62,6 +74,7 @@ public final class UploadManager {
             connection.setRequestProperty("X-Mime-Type", file.getMimeType());
             connection.setRequestProperty("X-Upload-Id", task.getUploadId());
             try (OutputStream output = connection.getOutputStream()) {
+                if (canceled) return canceledResult();
                 byte[] buffer = new byte[BUFFER_SIZE];
                 long sent = 0;
                 int count;
@@ -71,13 +84,16 @@ public final class UploadManager {
                     if (count == -1) break;
                     if (canceled) return canceledResult();
                     output.write(buffer, 0, count);
+                    if (canceled) return canceledResult();
                     output.flush();
+                    if (canceled) return canceledResult();
                     sent += count;
                     if (listener != null) listener.onProgress(sent, file.getSize());
                 }
             }
             if (canceled) return canceledResult();
             int code = connection.getResponseCode();
+            if (canceled) return canceledResult();
             return code >= 200 && code < 300 ? UploadResult.success(code)
                     : UploadResult.failure(code, connection.getResponseMessage());
         } catch (IOException e) {
@@ -86,8 +102,18 @@ public final class UploadManager {
         } catch (SecurityException | IllegalArgumentException e) {
             return UploadResult.failure(UploadError.UNKNOWN, -1, e.getMessage());
         } finally {
-            if (currentConnection == connection) currentConnection = null;
+            synchronized (cancellationLock) {
+                if (currentConnection == connection) currentConnection = null;
+            }
             if (connection != null) connection.disconnect();
+        }
+    }
+
+    private boolean registerConnection(HttpURLConnection connection) {
+        synchronized (cancellationLock) {
+            if (canceled) return false;
+            currentConnection = connection;
+            return true;
         }
     }
 

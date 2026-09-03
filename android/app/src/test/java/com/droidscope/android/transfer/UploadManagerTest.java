@@ -12,7 +12,10 @@ import org.junit.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -52,6 +55,98 @@ public final class UploadManagerTest {
             executor.shutdownNow();
             server.stop(0);
         }
+    }
+
+    @Test
+    public void cancelWhileOpeningOutputStreamPreventsAnyWrite() throws Exception {
+        ControlledConnection connection = new ControlledConnection();
+        connection.outputStreamGate = new Gate();
+        UploadManager manager = newManager(connection);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<UploadResult> upload = executor.submit(() -> manager.upload(task(), null));
+
+            assertTrue(connection.outputStreamGate.started.await(3, TimeUnit.SECONDS));
+            manager.cancel();
+            connection.outputStreamGate.release.countDown();
+
+            assertCanceled(upload);
+            assertEquals(0, connection.bytesWritten.get());
+            assertTrue(connection.disconnected);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    public void cancelAtWriteBoundaryPreventsThePendingWrite() throws Exception {
+        ControlledConnection connection = new ControlledConnection();
+        connection.writeGate = new Gate();
+        UploadManager manager = newManager(connection);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<UploadResult> upload = executor.submit(() -> manager.upload(task(), null));
+
+            assertTrue(connection.writeGate.started.await(3, TimeUnit.SECONDS));
+            manager.cancel();
+            connection.writeGate.release.countDown();
+
+            assertCanceled(upload);
+            assertEquals(0, connection.bytesWritten.get());
+            assertTrue(connection.disconnected);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    public void cancelBeforeResponseCompletesCannotReturnSuccess() throws Exception {
+        ControlledConnection connection = new ControlledConnection();
+        connection.responseGate = new Gate();
+        UploadManager manager = newManager(connection);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<UploadResult> upload = executor.submit(() -> manager.upload(task(), null));
+
+            assertTrue(connection.responseGate.started.await(3, TimeUnit.SECONDS));
+            manager.cancel();
+            connection.responseGate.release.countDown();
+
+            assertCanceled(upload);
+            assertEquals(1, connection.bytesWritten.get());
+            assertTrue(connection.disconnected);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private static UploadManager newManager(ControlledConnection connection) {
+        return new UploadManager(ignored -> new InputStream() {
+            private boolean unread = true;
+
+            @Override
+            public int read(byte[] buffer, int offset, int length) {
+                if (!unread) return -1;
+                unread = false;
+                buffer[offset] = 1;
+                return 1;
+            }
+
+            @Override
+            public int read() {
+                return -1;
+            }
+        }, ignored -> connection);
+    }
+
+    private static UploadTask task() {
+        return new UploadTask(new ShareFile(null, "cancel.bin", "application/octet-stream", 1));
+    }
+
+    private static void assertCanceled(Future<UploadResult> upload) throws Exception {
+        UploadResult result = upload.get(3, TimeUnit.SECONDS);
+        assertFalse(result.isSuccess());
+        assertEquals(UploadError.CANCELED, result.getError());
     }
 
     private static void receiveUntilDisconnected(HttpExchange exchange, CountDownLatch firstChunkReceived,
@@ -102,6 +197,74 @@ public final class UploadManagerTest {
         @Override
         public int read() throws IOException {
             throw new IOException("byte reads are not expected");
+        }
+    }
+
+    private static final class Gate {
+        final CountDownLatch started = new CountDownLatch(1);
+        final CountDownLatch release = new CountDownLatch(1);
+
+        void await() throws IOException {
+            started.countDown();
+            try {
+                if (!release.await(3, TimeUnit.SECONDS)) throw new IOException("gate was not released");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException(e);
+            }
+        }
+    }
+
+    private static final class ControlledConnection extends HttpURLConnection {
+        final AtomicInteger bytesWritten = new AtomicInteger();
+        volatile boolean disconnected;
+        Gate outputStreamGate;
+        Gate writeGate;
+        Gate responseGate;
+
+        ControlledConnection() throws IOException {
+            super(new URL("http://127.0.0.1/upload"));
+        }
+
+        @Override
+        public OutputStream getOutputStream() throws IOException {
+            if (outputStreamGate != null) outputStreamGate.await();
+            if (disconnected) throw new IOException("disconnected");
+            return new OutputStream() {
+                @Override
+                public void write(int value) throws IOException {
+                    if (writeGate != null) writeGate.await();
+                    if (disconnected) throw new IOException("disconnected");
+                    bytesWritten.incrementAndGet();
+                }
+
+                @Override
+                public void write(byte[] buffer, int offset, int length) throws IOException {
+                    if (writeGate != null) writeGate.await();
+                    if (disconnected) throw new IOException("disconnected");
+                    bytesWritten.addAndGet(length);
+                }
+            };
+        }
+
+        @Override
+        public int getResponseCode() throws IOException {
+            if (responseGate != null) responseGate.await();
+            return 200;
+        }
+
+        @Override
+        public void disconnect() {
+            disconnected = true;
+        }
+
+        @Override
+        public boolean usingProxy() {
+            return false;
+        }
+
+        @Override
+        public void connect() {
         }
     }
 }
