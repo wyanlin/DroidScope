@@ -108,8 +108,7 @@ public final class UploadManager {
         if (file.getSize() < 0) return UploadResult.failure("file size unavailable");
         try (InputStream input = call(CALL_INPUT_OPEN, () -> inputFactory.open(file))) {
             if (input == null) return UploadResult.failure("cannot open URI");
-            HttpURLConnection connection = call(CALL_CONNECTION_OPEN, () -> connectionFactory.open(file));
-            registerConnection(connection);
+            HttpURLConnection connection = openConnection(file);
             try {
                 connection.setRequestMethod("POST");
                 connection.setDoOutput(true);
@@ -164,15 +163,33 @@ public final class UploadManager {
         }
     }
 
-    private void registerConnection(HttpURLConnection connection) throws UploadCanceledException {
-        boolean disconnect;
+    private HttpURLConnection openConnection(ShareFile file) throws IOException {
+        HttpURLConnection connection = null;
+        boolean disconnect = false;
         synchronized (stateLock) {
-            disconnect = canceled;
-            if (!disconnect) currentConnection = connection;
+            if (canceled) throw new UploadCanceledException();
+            inFlightCalls++;
         }
-        if (disconnect) {
-            connection.disconnect();
-            throw new UploadCanceledException();
+        try {
+            observer.beforeCall(CALL_CONNECTION_OPEN);
+            synchronized (stateLock) {
+                if (canceled) throw new UploadCanceledException();
+            }
+            connection = connectionFactory.open(file);
+            synchronized (stateLock) {
+                disconnect = canceled;
+                if (!disconnect) currentConnection = connection;
+            }
+            if (disconnect) {
+                connection.disconnect();
+                throw new UploadCanceledException();
+            }
+            return connection;
+        } finally {
+            synchronized (stateLock) {
+                inFlightCalls--;
+                stateLock.notifyAll();
+            }
         }
     }
 

@@ -51,17 +51,21 @@ public final class ShareActivity extends Activity {
     @Override
     protected void onDestroy() {
         canceled = true;
-        UploadManager manager = currentUpload;
-        if (manager != null) manager.cancel();
+        cancelCurrentUploadAsync();
         super.onDestroy();
     }
 
     private void cancelTransfer() {
         if (terminal) return;
         canceled = true;
-        UploadManager manager = currentUpload;
-        if (manager != null) manager.cancel();
         showTerminal("已取消发送");
+        cancelCurrentUploadAsync();
+    }
+
+    private void cancelCurrentUploadAsync() {
+        UploadManager manager = currentUpload;
+        if (manager == null) return;
+        new Thread(manager::cancel, "usb-file-share-cancel").start();
     }
 
     private void transfer(Intent intent) {
@@ -119,12 +123,14 @@ public final class ShareActivity extends Activity {
 
     private void showStatus(String text) {
         runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
             if (!terminal) statusView.setText(text);
         });
     }
 
     private void showTerminal(String text) {
         runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
             if (terminal) return;
             terminal = true;
             statusView.setText(text);

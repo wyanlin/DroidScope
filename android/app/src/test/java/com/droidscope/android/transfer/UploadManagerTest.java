@@ -70,6 +70,42 @@ public final class UploadManagerTest {
     }
 
     @Test
+    public void cancelDuringConnectionOpenDisconnectsTheReturnedConnection() throws Exception {
+        ControlledConnection connection = new ControlledConnection();
+        CountDownLatch openStarted = new CountDownLatch(1);
+        CountDownLatch releaseOpen = new CountDownLatch(1);
+        CallGate gate = new CallGate("unused");
+        UploadManager manager = new UploadManager(ignored -> oneByteInput(), ignored -> {
+            openStarted.countDown();
+            try {
+                if (!releaseOpen.await(3, TimeUnit.SECONDS)) throw new IOException("open was not released");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException(e);
+            }
+            return connection;
+        }, gate);
+        ExecutorService uploads = Executors.newSingleThreadExecutor();
+        ExecutorService cancellations = Executors.newSingleThreadExecutor();
+        try {
+            Future<UploadResult> upload = uploads.submit(() -> manager.upload(task(1), null));
+            assertTrue(openStarted.await(3, TimeUnit.SECONDS));
+
+            Future<?> cancel = cancellations.submit(manager::cancel);
+            assertTrue(gate.cancelRequested.await(3, TimeUnit.SECONDS));
+            assertFalse("cancel returned while connection open was in flight", cancel.isDone());
+            releaseOpen.countDown();
+
+            cancel.get(3, TimeUnit.SECONDS);
+            assertCanceled(upload);
+            assertTrue(connection.disconnected);
+        } finally {
+            uploads.shutdownNow();
+            cancellations.shutdownNow();
+        }
+    }
+
+    @Test
     public void cancelBeforeOutputStreamPreventsOutputStreamCall() throws Exception {
         ControlledConnection connection = new ControlledConnection();
         Fixture fixture = newManager(connection, null, UploadManager.CALL_OUTPUT_STREAM);
