@@ -18,6 +18,7 @@ public final class UploadManager {
     static final String CALL_READ = "read";
     static final String CALL_WRITE = "write";
     static final String CALL_FLUSH = "flush";
+    static final String CALL_OUTPUT_CLOSE = "outputClose";
     static final String CALL_RESPONSE = "response";
     static final String CALL_RESPONSE_MESSAGE = "responseMessage";
 
@@ -120,7 +121,8 @@ public final class UploadManager {
                 connection.setRequestProperty("X-File-Size", Long.toString(file.getSize()));
                 connection.setRequestProperty("X-Mime-Type", file.getMimeType());
                 connection.setRequestProperty("X-Upload-Id", task.getUploadId());
-                try (OutputStream output = call(CALL_OUTPUT_STREAM, connection::getOutputStream)) {
+                OutputStream output = call(CALL_OUTPUT_STREAM, connection::getOutputStream);
+                try {
                     byte[] buffer = new byte[BUFFER_SIZE];
                     long sent = 0;
                     int count;
@@ -131,6 +133,8 @@ public final class UploadManager {
                         sent += count;
                         if (listener != null) listener.onProgress(sent, file.getSize());
                     }
+                } finally {
+                    closeOutput(output);
                 }
                 int code = call(CALL_RESPONSE, connection::getResponseCode);
                 if (code >= 200 && code < 300) return UploadResult.success(code);
@@ -180,6 +184,14 @@ public final class UploadManager {
 
     private boolean isCanceled() {
         synchronized (stateLock) { return canceled; }
+    }
+
+    private void closeOutput(OutputStream output) throws IOException {
+        if (isCanceled()) return;
+        call(CALL_OUTPUT_CLOSE, () -> {
+            output.close();
+            return null;
+        });
     }
 
     private <T> T call(String name, IoCall<T> operation) throws IOException {

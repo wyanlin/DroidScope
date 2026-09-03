@@ -105,6 +105,18 @@ public final class UploadManagerTest {
         assertTrue(connection.disconnected);
     }
 
+    @Test
+    public void cancelBeforeOutputClosePreventsCloseCall() throws Exception {
+        ControlledConnection connection = new ControlledConnection();
+        Fixture fixture = newManager(connection, null, UploadManager.CALL_OUTPUT_CLOSE);
+
+        UploadResult result = cancelAtCall(fixture);
+
+        assertEquals(0, connection.outputCloseCalls.get());
+        assertEquals(UploadError.CANCELED, result.getError());
+        assertTrue(connection.disconnected);
+    }
+
     private static UploadResult cancelAtCall(Fixture fixture) throws Exception {
         CallGate gate = fixture.gate;
         ExecutorService uploads = Executors.newSingleThreadExecutor();
@@ -114,6 +126,7 @@ public final class UploadManagerTest {
             assertTrue(gate.beforeCall.await(3, TimeUnit.SECONDS));
             Future<?> cancel = cancellations.submit(fixture.manager::cancel);
             assertTrue(gate.cancelRequested.await(3, TimeUnit.SECONDS));
+            assertFalse("cancel returned while the call was in flight", cancel.isDone());
             gate.release.countDown();
             cancel.get(3, TimeUnit.SECONDS);
             UploadResult result = upload.get(3, TimeUnit.SECONDS);
@@ -221,6 +234,7 @@ public final class UploadManagerTest {
 
     private static final class ControlledConnection extends HttpURLConnection {
         final AtomicInteger outputStreamCalls = new AtomicInteger();
+        final AtomicInteger outputCloseCalls = new AtomicInteger();
         final AtomicInteger bytesWritten = new AtomicInteger();
         final AtomicInteger responseCalls = new AtomicInteger();
         volatile boolean disconnected;
@@ -232,6 +246,7 @@ public final class UploadManagerTest {
                 @Override public void write(byte[] value, int offset, int length) {
                     bytesWritten.addAndGet(length);
                 }
+                @Override public void close() { outputCloseCalls.incrementAndGet(); }
             };
         }
         @Override public int getResponseCode() { responseCalls.incrementAndGet(); return 200; }
