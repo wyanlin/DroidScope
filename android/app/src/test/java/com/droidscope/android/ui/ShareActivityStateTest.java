@@ -153,6 +153,7 @@ public final class ShareActivityStateTest {
         ShareTransferPresenter presenter = new ShareTransferPresenter(state, port);
 
         presenter.onFailure(UploadResult.failure(UploadError.TIMEOUT, -1, "timeout"), 2);
+        assertTrue(port.failure.contains("第 2 个文件发送失败"));
         assertTrue(port.failure.contains("连接电脑超时"));
         assertTrue(port.retryable);
         assertTrue(state.beginRetry());
@@ -183,6 +184,18 @@ public final class ShareActivityStateTest {
         TransferUiState canceled = new TransferUiState(); canceled.destroy();
         assertFalse(new ShareTransferEntry(gate, canceled).run(nextRan::countDown));
         first.join(1000); second.join(1000);
+    }
+
+    @Test
+    public void presenterRetryRerunsCoordinatorWithFreshResources() {
+        TransferUiState state = new TransferUiState();
+        Port port = new Port();
+        ShareTransferPresenter presenter = new ShareTransferPresenter(state, port);
+        presenter.onFailure(UploadResult.failure(UploadError.PC_NOT_CONNECTED, -1, "offline"), 0);
+        assertTrue(state.beginRetry());
+        Scenario retry = new Scenario(UploadResult.success(200), UploadResult.success(201));
+        retry.run(1);
+        assertTrue(retry.pings == 1 && retry.uploads == 1 && retry.success);
     }
 
     private static final class Port implements ShareTransferPresenter.Port {
