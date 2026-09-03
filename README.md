@@ -13,6 +13,6 @@ DroidScope 是面向 Android 开发者的设备工作台。当前 V1 提供 Andr
 
 - Android：参见 [Android 构建说明](docs/ANDROID_BUILD.md)。
 - Windows：参见 [Windows 构建说明](docs/WINDOWS_BUILD.md)。
-- 产品设计与路线：参见 [设计文档](docs/DESIGN.md) 和 [ROADMAP.md](ROADMAP.md)。
+- 当前公开文档仅包含构建说明；内部产品设计与开发路线暂不公开。
 
 项目处于个人使用开发阶段，尚未提供正式稳定版本。
