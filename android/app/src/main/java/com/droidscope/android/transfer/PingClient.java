@@ -5,8 +5,10 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 
 public final class PingClient {
-    private final String endpoint;
+    interface ConnectionFactory { HttpURLConnection open() throws IOException; }
+
     private final int timeoutMillis;
+    private final ConnectionFactory connectionFactory;
     private final Object stateLock = new Object();
     private boolean canceled;
     private HttpURLConnection currentConnection;
@@ -16,8 +18,13 @@ public final class PingClient {
     }
 
     PingClient(String endpoint, int timeoutMillis) {
-        this.endpoint = endpoint;
+        this(endpoint, timeoutMillis,
+                () -> (HttpURLConnection) new URL(endpoint).openConnection());
+    }
+
+    PingClient(String endpoint, int timeoutMillis, ConnectionFactory connectionFactory) {
         this.timeoutMillis = timeoutMillis;
+        this.connectionFactory = connectionFactory;
     }
 
     public void cancel() {
@@ -33,17 +40,16 @@ public final class PingClient {
         HttpURLConnection connection = null;
         try {
             if (isCanceled()) return canceledResult();
-            connection = (HttpURLConnection) new URL(endpoint).openConnection();
+            connection = connectionFactory.open();
             if (!setCurrentConnection(connection)) return canceledResult();
             connection.setRequestMethod("GET");
             connection.setConnectTimeout(timeoutMillis);
             connection.setReadTimeout(timeoutMillis);
             int code = connection.getResponseCode();
-            if (isCanceled()) return canceledResult();
-            return code >= 200 && code < 300 ? UploadResult.success(code)
-                    : UploadResult.failure(code, connection.getResponseMessage());
+            String message = code >= 200 && code < 300 ? null : connection.getResponseMessage();
+            return responseResult(code, message);
         } catch (IOException e) {
-            return isCanceled() ? canceledResult() : UploadResult.failure(e);
+            return exceptionResult(e);
         } finally {
             if (connection != null) {
                 clearCurrentConnection(connection);
@@ -71,6 +77,20 @@ public final class PingClient {
 
     private boolean isCanceled() {
         synchronized (stateLock) { return canceled; }
+    }
+
+    private UploadResult responseResult(int code, String message) {
+        synchronized (stateLock) {
+            if (canceled) return canceledResult();
+            return code >= 200 && code < 300 ? UploadResult.success(code)
+                    : UploadResult.failure(code, message);
+        }
+    }
+
+    private UploadResult exceptionResult(IOException error) {
+        synchronized (stateLock) {
+            return canceled ? canceledResult() : UploadResult.failure(error);
+        }
     }
 
     private static UploadResult canceledResult() {

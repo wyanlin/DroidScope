@@ -9,10 +9,12 @@ import org.junit.Test;
 
 import java.io.IOException;
 import java.net.ConnectException;
+import java.net.HttpURLConnection;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
+import java.net.URL;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -145,5 +147,74 @@ public final class UploadResultTest {
             executor.shutdownNow();
             server.close();
         }
+    }
+
+    @Test
+    public void cancelAfterPingResponseIsReadyReturnsCanceled() throws Exception {
+        ServerSocket server = new ServerSocket(0);
+        CountDownLatch responseReady = new CountDownLatch(1);
+        CountDownLatch allowResult = new CountDownLatch(1);
+        Thread responder = new Thread(() -> {
+            try (Socket socket = server.accept()) {
+                socket.getInputStream().read();
+                socket.getOutputStream().write(("HTTP/1.1 503 Service Unavailable\r\n"
+                        + "Content-Length: 0\r\n\r\n").getBytes());
+                socket.getOutputStream().flush();
+            } catch (IOException ignored) {
+            }
+        });
+        responder.start();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            String endpoint = "http://127.0.0.1:" + server.getLocalPort() + "/ping";
+            PingClient client = new PingClient(endpoint, 5000, () ->
+                    new BlockingResponseMessageConnection((HttpURLConnection) new URL(endpoint).openConnection(),
+                            responseReady, allowResult));
+            Future<UploadResult> ping = executor.submit(client::ping);
+            assertTrue(responseReady.await(3, TimeUnit.SECONDS));
+
+            client.cancel();
+            allowResult.countDown();
+
+            assertEquals(UploadError.CANCELED, ping.get(3, TimeUnit.SECONDS).getError());
+        } finally {
+            allowResult.countDown();
+            executor.shutdownNow();
+            server.close();
+        }
+    }
+
+    private static final class BlockingResponseMessageConnection extends HttpURLConnection {
+        private final HttpURLConnection delegate;
+        private final CountDownLatch responseReady;
+        private final CountDownLatch allowResult;
+
+        BlockingResponseMessageConnection(HttpURLConnection delegate, CountDownLatch responseReady,
+                CountDownLatch allowResult) {
+            super(delegate.getURL());
+            this.delegate = delegate;
+            this.responseReady = responseReady;
+            this.allowResult = allowResult;
+        }
+
+        @Override public void setRequestMethod(String method) throws java.net.ProtocolException {
+            delegate.setRequestMethod(method);
+        }
+        @Override public void setConnectTimeout(int timeout) { delegate.setConnectTimeout(timeout); }
+        @Override public void setReadTimeout(int timeout) { delegate.setReadTimeout(timeout); }
+        @Override public int getResponseCode() throws IOException { return delegate.getResponseCode(); }
+        @Override public String getResponseMessage() throws IOException {
+            responseReady.countDown();
+            try {
+                if (!allowResult.await(3, TimeUnit.SECONDS)) throw new IOException("result was not released");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException(e);
+            }
+            return delegate.getResponseMessage();
+        }
+        @Override public void disconnect() { delegate.disconnect(); }
+        @Override public boolean usingProxy() { return delegate.usingProxy(); }
+        @Override public void connect() throws IOException { delegate.connect(); }
     }
 }
