@@ -157,24 +157,16 @@ public final class ShareActivity extends Activity {
                     return result;
                 };
             }
-        }, new ShareTransferCoordinator.Callback() {
-            @Override public boolean isCanceled() { return transferUiState.isCanceled(); }
-            @Override public void onFailure(UploadResult result, int fileNumber) {
-                String failure = TransferStatusText.failure(result);
-                String text = fileNumber == 0 ? failure + "\n" + metadata
-                        : "第 " + fileNumber + " 个文件发送失败：" + failure + "\n" + metadata;
-                showFailure(result, text);
+        }, new ShareTransferPresenter(transferUiState, new ShareTransferPresenter.Port() {
+            @Override public void showFailure(String text, boolean retryable) {
+                showPresentedFailure(text + "\n" + metadata, retryable);
             }
-            @Override public void onEmpty() { showTerminal("电脑已连接\n" + metadata); }
-            @Override public void onSuccess(int fileCount) {
+            @Override public void showEmpty() { showTerminal("电脑已连接\n" + metadata); }
+            @Override public void finishSuccess(int fileCount) {
                 showSuccess("全部发送成功（" + fileCount + " 个）\n" + metadata);
             }
-            @Override public void onCanceled() {
-                if (transferUiState.cancelAndClaimTerminal()) {
-                    showClaimedTerminal("已取消发送\n" + metadata);
-                }
-            }
-        }).transfer(files);
+            @Override public void showCanceled() { showClaimedTerminal("已取消发送\n" + metadata); }
+        })).transfer(files);
     }
 
     private void showStatus(String text) {
@@ -200,6 +192,15 @@ public final class ShareActivity extends Activity {
             if (!transferUiState.claimFailure(UploadManager.isRetryable(result))) return;
             statusView.setText(text);
             boolean retryable = transferUiState.canRetry();
+            retryButton.setVisibility(retryable ? View.VISIBLE : View.GONE);
+            cancelButton.setEnabled(true);
+        });
+    }
+
+    private void showPresentedFailure(String text, boolean retryable) {
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            statusView.setText(text);
             retryButton.setVisibility(retryable ? View.VISIBLE : View.GONE);
             cancelButton.setEnabled(true);
         });
