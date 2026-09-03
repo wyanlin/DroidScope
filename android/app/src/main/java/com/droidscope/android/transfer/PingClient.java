@@ -1,4 +1,4 @@
-package com.usbfileshare.android.transfer;
+package com.droidscope.android.transfer;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;

@@ -1,4 +1,4 @@
-package com.usbfileshare.adb;
+package com.droidscope.adb;
 
 public final class DeviceStateTrackerTest {
     public static void main(String[] args) {

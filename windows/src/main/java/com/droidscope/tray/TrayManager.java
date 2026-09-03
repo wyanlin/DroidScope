@@ -1,6 +1,6 @@
-package com.usbfileshare.tray;
+package com.droidscope.tray;
 
-import com.usbfileshare.adb.AdbManager;
+import com.droidscope.adb.AdbManager;
 
 import java.awt.Color;
 import java.awt.Desktop;
@@ -27,7 +27,7 @@ public final class TrayManager implements AutoCloseable {
         if (!SystemTray.isSupported()) return null;
         try {
             PopupMenu menu = new PopupMenu();
-            TrayIcon icon = new TrayIcon(createIcon(), "USB File Share", menu);
+            TrayIcon icon = new TrayIcon(createIcon(), "DroidScope", menu);
             icon.setImageAutoSize(true);
             MenuItem open = new MenuItem("Open Receive Folder");
             open.addActionListener(event -> openDirectory(directory));
@@ -59,9 +59,9 @@ public final class TrayManager implements AutoCloseable {
     private static void reconnect(AdbManager adbManager, TrayIcon icon) {
         try {
             int count = adbManager.establishReverse().size();
-            icon.displayMessage("USB File Share", "Reconnected " + count + " device(s)", TrayIcon.MessageType.INFO);
+            icon.displayMessage("DroidScope", "Reconnected " + count + " device(s)", TrayIcon.MessageType.INFO);
         } catch (IOException | InterruptedException e) {
-            icon.displayMessage("USB File Share", "Reconnect failed: " + e.getMessage(), TrayIcon.MessageType.ERROR);
+            icon.displayMessage("DroidScope", "Reconnect failed: " + e.getMessage(), TrayIcon.MessageType.ERROR);
         }
     }
 

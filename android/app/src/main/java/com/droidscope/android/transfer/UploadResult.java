@@ -1,4 +1,4 @@
-package com.usbfileshare.android.transfer;
+package com.droidscope.android.transfer;
 
 public final class UploadResult {
     private final boolean success;

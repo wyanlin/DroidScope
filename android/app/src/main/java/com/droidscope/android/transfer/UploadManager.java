@@ -1,8 +1,8 @@
-package com.usbfileshare.android.transfer;
+package com.droidscope.android.transfer;
 
 import android.content.ContentResolver;
 
-import com.usbfileshare.android.model.ShareFile;
+import com.droidscope.android.model.ShareFile;
 
 import java.io.IOException;
 import java.io.InputStream;

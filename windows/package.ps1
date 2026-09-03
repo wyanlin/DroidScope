@@ -18,11 +18,11 @@ if (Test-Path $output) {
 }
 & (Join-Path $javaHome 'bin\jpackage.exe') `
     --type app-image `
-    --name UsbFileShare `
+    --name DroidScope `
     --dest $output `
     --input $packageInput `
     --main-jar usb-file-share.jar `
-    --main-class com.usbfileshare.Main `
+    --main-class com.droidscope.Main `
     --java-options '-Dfile.encoding=UTF-8'
 if ($LASTEXITCODE -ne 0) { throw "jpackage failed with exit code $LASTEXITCODE" }
-Write-Output "Desktop application created: $(Join-Path $output 'UsbFileShare\UsbFileShare.exe')"
+Write-Output "Desktop application created: $(Join-Path $output 'DroidScope\DroidScope.exe')"

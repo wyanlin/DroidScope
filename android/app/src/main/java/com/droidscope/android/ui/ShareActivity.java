@@ -1,4 +1,4 @@
-package com.usbfileshare.android.ui;
+package com.droidscope.android.ui;
 
 import android.app.Activity;
 import android.content.Intent;
@@ -7,20 +7,20 @@ import android.os.Bundle;
 import android.util.Log;
 import android.widget.TextView;
 
-import com.usbfileshare.android.model.ShareFile;
-import com.usbfileshare.android.transfer.PingClient;
-import com.usbfileshare.android.transfer.ProgressListener;
-import com.usbfileshare.android.transfer.UploadManager;
-import com.usbfileshare.android.transfer.UploadResult;
-import com.usbfileshare.android.transfer.UploadTask;
-import com.usbfileshare.android.util.UriUtils;
+import com.droidscope.android.model.ShareFile;
+import com.droidscope.android.transfer.PingClient;
+import com.droidscope.android.transfer.ProgressListener;
+import com.droidscope.android.transfer.UploadManager;
+import com.droidscope.android.transfer.UploadResult;
+import com.droidscope.android.transfer.UploadTask;
+import com.droidscope.android.util.UriUtils;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.io.IOException;
 
 public final class ShareActivity extends Activity {
-    private static final String TAG = "UsbFileShare";
+    private static final String TAG = "DroidScope";
 
     @Override
     protected void onCreate(Bundle state) {

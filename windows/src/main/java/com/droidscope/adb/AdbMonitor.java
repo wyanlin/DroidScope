@@ -1,4 +1,4 @@
-package com.usbfileshare.adb;
+package com.droidscope.adb;
 
 import java.io.IOException;
 import java.util.HashSet;
@@ -11,7 +11,7 @@ public final class AdbMonitor implements AutoCloseable {
     private final AdbManager adbManager;
     private final DeviceStateTracker stateTracker = new DeviceStateTracker();
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(r -> {
-        Thread thread = new Thread(r, "usb-file-share-adb-monitor");
+        Thread thread = new Thread(r, "droidscope-adb-monitor");
         thread.setDaemon(true);
         return thread;
     });

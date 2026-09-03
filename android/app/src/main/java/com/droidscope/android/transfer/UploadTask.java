@@ -1,6 +1,6 @@
-package com.usbfileshare.android.transfer;
+package com.droidscope.android.transfer;
 
-import com.usbfileshare.android.model.ShareFile;
+import com.droidscope.android.model.ShareFile;
 
 public final class UploadTask {
     private final ShareFile file;

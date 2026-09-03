@@ -1,4 +1,4 @@
-package com.usbfileshare.adb;
+package com.droidscope.adb;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

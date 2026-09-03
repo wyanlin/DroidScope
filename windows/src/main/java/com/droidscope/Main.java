@@ -1,9 +1,9 @@
-package com.usbfileshare;
+package com.droidscope;
 
-import com.usbfileshare.server.ReceiverServer;
-import com.usbfileshare.adb.AdbManager;
-import com.usbfileshare.adb.AdbMonitor;
-import com.usbfileshare.tray.TrayManager;
+import com.droidscope.server.ReceiverServer;
+import com.droidscope.adb.AdbManager;
+import com.droidscope.adb.AdbMonitor;
+import com.droidscope.tray.TrayManager;
 
 import java.io.IOException;
 import java.net.BindException;
@@ -20,13 +20,13 @@ public final class Main {
         try {
             server = new ReceiverServer(9527, directory);
         } catch (BindException e) {
-            String message = "端口 9527 已被占用，请先关闭已运行的 USB File Share。";
+            String message = "Port 9527 is already in use. Close the running DroidScope first.";
             System.err.println(message);
-            JOptionPane.showMessageDialog(null, message, "USB File Share 启动失败", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(null, message, "DroidScope Startup Failed", JOptionPane.ERROR_MESSAGE);
             return;
         }
         server.start();
-        System.out.println("USB File Share Receiver listening on http://127.0.0.1:9527");
+        System.out.println("DroidScope Receiver listening on http://127.0.0.1:9527");
         AdbManager adbManager = new AdbManager();
         try {
             System.out.println("ADB reverse ready for: " + adbManager.establishReverse());

@@ -1,4 +1,4 @@
-package com.usbfileshare.adb;
+package com.droidscope.adb;
 
 import java.util.HashMap;
 import java.util.Map;

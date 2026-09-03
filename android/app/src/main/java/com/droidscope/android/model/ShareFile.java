@@ -1,4 +1,4 @@
-package com.usbfileshare.android.model;
+package com.droidscope.android.model;
 
 import android.net.Uri;
 

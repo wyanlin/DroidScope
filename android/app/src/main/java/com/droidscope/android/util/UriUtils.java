@@ -1,4 +1,4 @@
-package com.usbfileshare.android.util;
+package com.droidscope.android.util;
 
 import android.content.ContentResolver;
 import android.database.Cursor;

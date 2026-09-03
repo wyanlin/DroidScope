@@ -1,2 +1,2 @@
 @echo off
-java -cp ..\build-out\windows com.usbfileshare.Main
+java -cp ..\build-out\windows com.droidscope.Main

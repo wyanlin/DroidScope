@@ -1,6 +1,6 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.usbfileshare.android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.droidscope.android">
     <uses-permission android:name="android.permission.INTERNET" />
-    <application android:theme="@style/AppTheme" android:label="发送到电脑"
+    <application android:theme="@style/AppTheme" android:label="DroidScope"
         android:icon="@drawable/app_icon" android:roundIcon="@drawable/app_icon"
         android:usesCleartextTraffic="true">
         <activity android:name=".ui.ShareActivity" android:exported="true">
