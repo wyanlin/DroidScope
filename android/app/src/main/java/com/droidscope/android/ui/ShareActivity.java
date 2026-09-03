@@ -86,16 +86,10 @@ public final class ShareActivity extends Activity {
         Thread worker = new Thread(() -> {
             boolean acquired = false;
             try {
-                acquired = TRANSFER_GATE.acquire(transferUiState::isCanceled);
-                if (acquired) {
-                    ownsTransferGate = true;
-                    if (!transferUiState.isCanceled()) transfer(intent);
-                }
+                acquired = new ShareTransferEntry(TRANSFER_GATE, transferUiState)
+                        .run(() -> transfer(intent));
             } finally {
-                if (acquired) {
-                    ownsTransferGate = false;
-                    TRANSFER_GATE.release();
-                }
+                ownsTransferGate = false;
                 if (transferThread == Thread.currentThread()) transferThread = null;
             }
         }, "usb-file-share-transfer");

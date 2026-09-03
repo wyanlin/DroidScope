@@ -164,6 +164,27 @@ public final class ShareActivityStateTest {
         assertTrue(port.finished == 1);
     }
 
+    @Test
+    public void entryWaitsForOldRunAndDestroyedNewEntryDoesNotTransfer() throws Exception {
+        TransferGate gate = new TransferGate();
+        TransferUiState old = new TransferUiState();
+        TransferUiState next = new TransferUiState();
+        CountDownLatch oldStarted = new CountDownLatch(1);
+        CountDownLatch releaseOld = new CountDownLatch(1);
+        CountDownLatch nextRan = new CountDownLatch(1);
+        Thread first = new Thread(() -> new ShareTransferEntry(gate, old).run(() -> {
+            oldStarted.countDown(); try { releaseOld.await(); } catch (InterruptedException ignored) { }
+        }));
+        first.start(); assertTrue(oldStarted.await(1, TimeUnit.SECONDS));
+        Thread second = new Thread(() -> new ShareTransferEntry(gate, next)
+                .run(nextRan::countDown));
+        second.start(); assertFalse(nextRan.await(100, TimeUnit.MILLISECONDS));
+        releaseOld.countDown(); assertTrue(nextRan.await(1, TimeUnit.SECONDS));
+        TransferUiState canceled = new TransferUiState(); canceled.destroy();
+        assertFalse(new ShareTransferEntry(gate, canceled).run(nextRan::countDown));
+        first.join(1000); second.join(1000);
+    }
+
     private static final class Port implements ShareTransferPresenter.Port {
         String failure;
         boolean retryable;
