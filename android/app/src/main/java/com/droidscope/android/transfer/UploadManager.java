@@ -121,6 +121,12 @@ public final class UploadManager {
         return finishUpload(result);
     }
 
+    public static boolean isRetryable(UploadResult result) {
+        if (result == null || result.isSuccess()) return false;
+        UploadError error = result.getError();
+        return error == UploadError.PC_NOT_CONNECTED || error == UploadError.TIMEOUT;
+    }
+
     private UploadResult uploadInternal(UploadTask task, ProgressListener listener) throws IOException {
         ShareFile file = task.getFile();
         if (file.getSize() < 0) return UploadResult.failure("file size unavailable");
