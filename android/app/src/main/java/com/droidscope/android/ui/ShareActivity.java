@@ -131,55 +131,50 @@ public final class ShareActivity extends Activity {
         }
         final String metadata = files.isEmpty() ? "未找到可分享文件" : summary.toString();
         showStatus("正在连接电脑…\n" + metadata);
-        if (transferUiState.isCanceled()) return;
-        PingClient ping = new PingClient();
-        currentPing = ping;
-        if (transferUiState.isCanceled()) {
-            ping.cancel();
-            return;
-        }
-        UploadResult pingResult = ping.ping();
-        if (currentPing == ping) currentPing = null;
-        if (transferUiState.isCanceled()) return;
-        if (!pingResult.isSuccess()) {
-            showFailure(pingResult, TransferStatusText.failure(pingResult) + "\n" + metadata);
-            return;
-        }
-        if (files.isEmpty()) {
-            showTerminal("电脑已连接\n" + metadata);
-            return;
-        }
-        for (int i = 0; i < files.size(); i++) {
-            if (transferUiState.isCanceled()) return;
-            final int fileNumber = i + 1;
-            ShareFile file = files.get(i);
-            UploadManager manager = new UploadManager(getContentResolver());
-            currentUpload = manager;
-            if (transferUiState.isCanceled()) {
-                manager.cancel();
-                return;
+        new ShareTransferCoordinator(new ShareTransferCoordinator.Factory() {
+            @Override public ShareTransferCoordinator.Ping createPing() {
+                PingClient ping = new PingClient();
+                currentPing = ping;
+                return () -> {
+                    UploadResult result = ping.ping();
+                    if (currentPing == ping) currentPing = null;
+                    return result;
+                };
             }
-            ProgressListener listener = (sent, total) -> {
-                long percent = total <= 0 ? 0 : sent * 100 / total;
-                showStatus("上传第 " + fileNumber + "/" + files.size() + " 个：" + percent + "%\n" + metadata);
-            };
-            UploadResult result = manager.upload(new UploadTask(file), listener);
-            if (currentUpload == manager) currentUpload = null;
-            if (transferUiState.isCanceled()
-                    || result.getError() == com.droidscope.android.transfer.UploadError.CANCELED) {
+
+            @Override public ShareTransferCoordinator.Upload createUpload(ShareFile file,
+                    int fileNumber, int fileCount) {
+                UploadManager manager = new UploadManager(getContentResolver());
+                currentUpload = manager;
+                return () -> {
+                    ProgressListener listener = (sent, total) -> {
+                        long percent = total <= 0 ? 0 : sent * 100 / total;
+                        showStatus("上传第 " + fileNumber + "/" + fileCount + " 个："
+                                + percent + "%\n" + metadata);
+                    };
+                    UploadResult result = manager.upload(new UploadTask(file), listener);
+                    if (currentUpload == manager) currentUpload = null;
+                    return result;
+                };
+            }
+        }, new ShareTransferCoordinator.Callback() {
+            @Override public boolean isCanceled() { return transferUiState.isCanceled(); }
+            @Override public void onFailure(UploadResult result, int fileNumber) {
+                String failure = TransferStatusText.failure(result);
+                String text = fileNumber == 0 ? failure + "\n" + metadata
+                        : "第 " + fileNumber + " 个文件发送失败：" + failure + "\n" + metadata;
+                showFailure(result, text);
+            }
+            @Override public void onEmpty() { showTerminal("电脑已连接\n" + metadata); }
+            @Override public void onSuccess(int fileCount) {
+                showSuccess("全部发送成功（" + fileCount + " 个）\n" + metadata);
+            }
+            @Override public void onCanceled() {
                 if (transferUiState.cancelAndClaimTerminal()) {
                     showClaimedTerminal("已取消发送\n" + metadata);
                 }
-                return;
             }
-            if (!result.isSuccess()) {
-                String failure = TransferStatusText.failure(result);
-                showFailure(result, "第 " + fileNumber + " 个文件发送失败：" + failure
-                        + "\n" + metadata);
-                return;
-            }
-        }
-        showSuccess("全部发送成功（" + files.size() + " 个）\n" + metadata);
+        }).transfer(files);
     }
 
     private void showStatus(String text) {

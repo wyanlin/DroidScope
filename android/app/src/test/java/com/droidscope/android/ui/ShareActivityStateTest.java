@@ -11,6 +11,9 @@ import org.junit.Test;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 public final class ShareActivityStateTest {
     @Test
@@ -105,5 +108,63 @@ public final class ShareActivityStateTest {
         assertTrue(waitingReturned.await(1, TimeUnit.SECONDS));
         gate.release();
         waitingActivity.join(1000);
+    }
+
+    @Test
+    public void singleFileSuccessFinishesAndEmptyListDoesNotCreateUpload() {
+        Scenario single = new Scenario(UploadResult.success(200), UploadResult.success(201));
+        single.run(1);
+        assertTrue(single.success);
+        assertTrue(single.uploads == 1);
+
+        Scenario empty = new Scenario(UploadResult.success(200));
+        empty.run(0);
+        assertTrue(empty.empty);
+        assertTrue(empty.uploads == 0);
+    }
+
+    @Test
+    public void multipleFilesRunInOrderAndStopOnFailureWithOriginalReason() {
+        Scenario scenario = new Scenario(UploadResult.success(200), UploadResult.success(201),
+                UploadResult.failure(UploadError.SERVER_ERROR, 422, "invalid"));
+        scenario.run(3);
+        assertTrue(scenario.uploads == 2);
+        assertTrue(scenario.failure.getError() == UploadError.SERVER_ERROR);
+        assertTrue(scenario.failureFile == 2);
+        assertFalse(scenario.success);
+    }
+
+    private static final class Scenario implements ShareTransferCoordinator.Factory,
+            ShareTransferCoordinator.Callback {
+        private final List<UploadResult> results;
+        int pings;
+        int uploads;
+        boolean success;
+        boolean empty;
+        UploadResult failure;
+        int failureFile;
+
+        Scenario(UploadResult... results) { this.results = new ArrayList<>(Arrays.asList(results)); }
+        void run(int count) {
+            List<com.droidscope.android.model.ShareFile> files = new ArrayList<>();
+            for (int i = 0; i < count; i++) files.add(null);
+            new ShareTransferCoordinator(this, this).transfer(files);
+        }
+        @Override public ShareTransferCoordinator.Ping createPing() {
+            pings++;
+            return () -> results.remove(0);
+        }
+        @Override public ShareTransferCoordinator.Upload createUpload(
+                com.droidscope.android.model.ShareFile file, int number, int count) {
+            uploads++;
+            return () -> results.remove(0);
+        }
+        @Override public boolean isCanceled() { return false; }
+        @Override public void onFailure(UploadResult result, int number) {
+            failure = result; failureFile = number;
+        }
+        @Override public void onEmpty() { empty = true; }
+        @Override public void onSuccess(int count) { success = true; }
+        @Override public void onCanceled() { }
     }
 }
