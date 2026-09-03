@@ -10,7 +10,6 @@ import android.widget.TextView;
 import com.droidscope.android.model.ShareFile;
 import com.droidscope.android.transfer.PingClient;
 import com.droidscope.android.transfer.ProgressListener;
-import com.droidscope.android.transfer.UploadError;
 import com.droidscope.android.transfer.UploadManager;
 import com.droidscope.android.transfer.UploadResult;
 import com.droidscope.android.transfer.UploadTask;
@@ -45,11 +44,7 @@ public final class ShareActivity extends Activity {
     private void transfer(List<ShareFile> files, String metadata, TextView view) {
         UploadResult pingResult = new PingClient().ping();
         if (!pingResult.isSuccess()) {
-            String failure = pingResult.getError() == UploadError.TIMEOUT ? "连接电脑超时"
-                    : pingResult.getError() == UploadError.SERVER_ERROR
-                    ? "电脑服务异常：" + pingResult.getMessage()
-                    : pingResult.getError() == UploadError.PC_NOT_CONNECTED ? "电脑未连接"
-                    : "连接失败：" + pingResult.getMessage();
+            String failure = TransferStatusText.failure(pingResult);
             runOnUiThread(() -> view.setText(failure + "\n" + metadata));
             return;
         }
@@ -67,7 +62,8 @@ public final class ShareActivity extends Activity {
             });
             UploadResult result = manager.upload(new UploadTask(file), listener);
             if (!result.isSuccess()) {
-                runOnUiThread(() -> view.setText("第 " + fileNumber + " 个文件发送失败：" + result.getMessage() + "\n" + metadata));
+                String failure = TransferStatusText.failure(result);
+                runOnUiThread(() -> view.setText("第 " + fileNumber + " 个文件发送失败：" + failure + "\n" + metadata));
                 return;
             }
         }
