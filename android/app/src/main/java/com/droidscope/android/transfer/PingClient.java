@@ -3,6 +3,8 @@ package com.droidscope.android.transfer;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.HashSet;
+import java.util.Set;
 
 public final class PingClient {
     interface ConnectionFactory { HttpURLConnection open() throws IOException; }
@@ -11,7 +13,7 @@ public final class PingClient {
     private final ConnectionFactory connectionFactory;
     private final Object stateLock = new Object();
     private boolean canceled;
-    private HttpURLConnection currentConnection;
+    private final Set<HttpURLConnection> currentConnections = new HashSet<>();
 
     public PingClient() {
         this("http://127.0.0.1:9527/api/v1/ping", 1500);
@@ -28,12 +30,12 @@ public final class PingClient {
     }
 
     public void cancel() {
-        HttpURLConnection connection;
+        HttpURLConnection[] connections;
         synchronized (stateLock) {
             canceled = true;
-            connection = currentConnection;
+            connections = currentConnections.toArray(new HttpURLConnection[0]);
         }
-        if (connection != null) connection.disconnect();
+        for (HttpURLConnection connection : connections) connection.disconnect();
     }
 
     public UploadResult ping() {
@@ -64,14 +66,14 @@ public final class PingClient {
                 connection.disconnect();
                 return false;
             }
-            currentConnection = connection;
+            currentConnections.add(connection);
             return true;
         }
     }
 
     private void clearCurrentConnection(HttpURLConnection connection) {
         synchronized (stateLock) {
-            if (currentConnection == connection) currentConnection = null;
+            currentConnections.remove(connection);
         }
     }
 

@@ -20,6 +20,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public final class UploadResultTest {
     @Test
@@ -184,6 +185,31 @@ public final class UploadResultTest {
         }
     }
 
+    @Test
+    public void cancelDisconnectsAllConnectionsFromConcurrentPings() throws Exception {
+        BlockingPingConnection firstConnection = new BlockingPingConnection();
+        BlockingPingConnection secondConnection = new BlockingPingConnection();
+        AtomicInteger nextConnection = new AtomicInteger();
+        PingClient client = new PingClient("http://unused", 5000, () ->
+                nextConnection.getAndIncrement() == 0 ? firstConnection : secondConnection);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<UploadResult> firstPing = executor.submit(client::ping);
+            Future<UploadResult> secondPing = executor.submit(client::ping);
+            assertTrue(firstConnection.responseStarted.await(3, TimeUnit.SECONDS));
+            assertTrue(secondConnection.responseStarted.await(3, TimeUnit.SECONDS));
+
+            client.cancel();
+
+            assertEquals(UploadError.CANCELED, firstPing.get(3, TimeUnit.SECONDS).getError());
+            assertEquals(UploadError.CANCELED, secondPing.get(3, TimeUnit.SECONDS).getError());
+            assertTrue(firstConnection.disconnected);
+            assertTrue(secondConnection.disconnected);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
     private static final class BlockingResponseMessageConnection extends HttpURLConnection {
         private final HttpURLConnection delegate;
         private final CountDownLatch responseReady;
@@ -217,5 +243,25 @@ public final class UploadResultTest {
         @Override public void disconnect() { delegate.disconnect(); }
         @Override public boolean usingProxy() { return delegate.usingProxy(); }
         @Override public void connect() throws IOException { delegate.connect(); }
+    }
+
+    private static final class BlockingPingConnection extends HttpURLConnection {
+        final CountDownLatch responseStarted = new CountDownLatch(1);
+        final CountDownLatch releaseResponse = new CountDownLatch(1);
+        volatile boolean disconnected;
+        BlockingPingConnection() throws IOException { super(new URL("http://127.0.0.1/ping")); }
+        @Override public int getResponseCode() throws IOException {
+            responseStarted.countDown();
+            try {
+                if (!releaseResponse.await(3, TimeUnit.SECONDS)) throw new IOException("not disconnected");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException(e);
+            }
+            throw new IOException("disconnected");
+        }
+        @Override public void disconnect() { disconnected = true; releaseResponse.countDown(); }
+        @Override public boolean usingProxy() { return false; }
+        @Override public void connect() { }
     }
 }

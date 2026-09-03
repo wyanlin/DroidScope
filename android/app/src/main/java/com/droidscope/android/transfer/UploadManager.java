@@ -22,7 +22,6 @@ public final class UploadManager {
     static final String CALL_READ = "read";
     static final String CALL_WRITE = "write";
     static final String CALL_FLUSH = "flush";
-    static final String CALL_OUTPUT_CLOSE = "outputClose";
     static final String CALL_RESPONSE = "response";
     static final String CALL_RESPONSE_MESSAGE = "responseMessage";
 
@@ -47,6 +46,8 @@ public final class UploadManager {
     private int inFlightCalls;
     private final Map<Thread, Integer> uploadThreadCounts = new HashMap<>();
     private final Set<HttpURLConnection> currentConnections = new HashSet<>();
+    private final Set<InputStream> currentInputs = new HashSet<>();
+    private final Set<OutputStream> currentOutputs = new HashSet<>();
 
     public UploadManager(ContentResolver resolver) {
         this(resolver, "http://127.0.0.1:9527/api/v1/files");
@@ -74,14 +75,22 @@ public final class UploadManager {
 
     public void cancel() {
         HttpURLConnection[] connections;
+        InputStream[] inputs;
+        OutputStream[] outputs;
         boolean calledFromUploadThread;
         synchronized (stateLock) {
             canceled = true;
             connections = currentConnections.toArray(new HttpURLConnection[0]);
+            inputs = currentInputs.toArray(new InputStream[0]);
+            outputs = currentOutputs.toArray(new OutputStream[0]);
+            currentInputs.clear();
+            currentOutputs.clear();
             calledFromUploadThread = uploadThreadCounts.containsKey(Thread.currentThread());
         }
         observer.onCancelRequested();
         for (HttpURLConnection connection : connections) connection.disconnect();
+        for (InputStream input : inputs) closeQuietly(input);
+        for (OutputStream output : outputs) closeQuietly(output);
         if (calledFromUploadThread) return;
         boolean interrupted = false;
         synchronized (stateLock) {
@@ -114,8 +123,13 @@ public final class UploadManager {
     private UploadResult uploadInternal(UploadTask task, ProgressListener listener) throws IOException {
         ShareFile file = task.getFile();
         if (file.getSize() < 0) return UploadResult.failure("file size unavailable");
-        try (InputStream input = call(CALL_INPUT_OPEN, () -> inputFactory.open(file))) {
-            if (input == null) return UploadResult.failure("cannot open URI");
+        InputStream input = call(CALL_INPUT_OPEN, () -> inputFactory.open(file));
+        if (input == null) return UploadResult.failure("cannot open URI");
+        if (!registerInput(input)) {
+            input.close();
+            throw new UploadCanceledException();
+        }
+        try {
             HttpURLConnection connection = openConnection(file);
             try {
                 connection.setRequestMethod("POST");
@@ -129,6 +143,10 @@ public final class UploadManager {
                 connection.setRequestProperty("X-Mime-Type", file.getMimeType());
                 connection.setRequestProperty("X-Upload-Id", task.getUploadId());
                 OutputStream output = call(CALL_OUTPUT_STREAM, connection::getOutputStream);
+                if (!registerOutput(output)) {
+                    output.close();
+                    throw new UploadCanceledException();
+                }
                 try {
                     byte[] buffer = new byte[BUFFER_SIZE];
                     long sent = 0;
@@ -151,6 +169,8 @@ public final class UploadManager {
                 clearConnection(connection);
                 connection.disconnect();
             }
+        } finally {
+            closeInput(input);
         }
     }
 
@@ -219,11 +239,48 @@ public final class UploadManager {
     }
 
     private void closeOutput(OutputStream output) throws IOException {
-        if (isCanceled()) return;
-        call(CALL_OUTPUT_CLOSE, () -> {
-            output.close();
-            return null;
-        });
+        if (claimOutput(output)) output.close();
+    }
+
+    private boolean registerInput(InputStream input) {
+        synchronized (stateLock) {
+            if (canceled) return false;
+            currentInputs.add(input);
+            return true;
+        }
+    }
+
+    private void closeInput(InputStream input) throws IOException {
+        if (claimInput(input)) input.close();
+    }
+
+    private boolean registerOutput(OutputStream output) {
+        synchronized (stateLock) {
+            if (canceled) return false;
+            currentOutputs.add(output);
+            return true;
+        }
+    }
+
+    private boolean claimInput(InputStream input) {
+        synchronized (stateLock) { return currentInputs.remove(input); }
+    }
+
+    private boolean claimOutput(OutputStream output) {
+        synchronized (stateLock) { return currentOutputs.remove(output); }
+    }
+
+    private static void closeQuietly(InputStream input) {
+        try { input.close(); } catch (IOException ignored) { }
+    }
+
+    private static void closeQuietly(OutputStream output) {
+        try { output.close(); } catch (IOException ignored) { }
+    }
+
+    private static void closeResourceQuietly(Object resource) {
+        if (resource instanceof InputStream) closeQuietly((InputStream) resource);
+        else if (resource instanceof OutputStream) closeQuietly((OutputStream) resource);
     }
 
     private <T> T call(String name, IoCall<T> operation) throws IOException {
@@ -237,8 +294,13 @@ public final class UploadManager {
                 if (canceled) throw new UploadCanceledException();
             }
             T result = operation.run();
+            boolean canceledAfterCall;
             synchronized (stateLock) {
-                if (canceled) throw new UploadCanceledException();
+                canceledAfterCall = canceled;
+            }
+            if (canceledAfterCall) {
+                closeResourceQuietly(result);
+                throw new UploadCanceledException();
             }
             return result;
         } finally {

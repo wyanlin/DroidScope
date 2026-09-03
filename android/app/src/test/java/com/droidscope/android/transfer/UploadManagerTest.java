@@ -143,15 +143,31 @@ public final class UploadManagerTest {
     }
 
     @Test
-    public void cancelBeforeOutputClosePreventsCloseCall() throws Exception {
+    public void cancelBeforeWriteClosesOutputStream() throws Exception {
         ControlledConnection connection = new ControlledConnection();
-        Fixture fixture = newManager(connection, null, UploadManager.CALL_OUTPUT_CLOSE);
+        Fixture fixture = newManager(connection, null, UploadManager.CALL_WRITE);
 
         UploadResult result = cancelAtCall(fixture);
 
-        assertEquals(0, connection.outputCloseCalls.get());
+        assertEquals(1, connection.outputCloseCalls.get());
         assertEquals(UploadError.CANCELED, result.getError());
         assertTrue(connection.disconnected);
+    }
+
+    @Test
+    public void cancelAfterOutputStreamCreationClosesUnregisteredOutputStream() throws Exception {
+        AtomicReference<UploadManager> managerReference = new AtomicReference<>();
+        CancelOnOutputConnection connection = new CancelOnOutputConnection(
+                () -> managerReference.get().cancel());
+        UploadManager manager = new UploadManager(ignored -> oneByteInput(), ignored -> connection);
+        managerReference.set(manager);
+        ExecutorService uploads = Executors.newSingleThreadExecutor();
+        try {
+            assertCanceled(uploads.submit(() -> manager.upload(task(1), null)));
+            assertEquals(1, connection.outputCloseCalls.get());
+        } finally {
+            uploads.shutdownNow();
+        }
     }
 
     @Test
@@ -216,6 +232,27 @@ public final class UploadManagerTest {
             assertCanceled(secondUpload);
             assertTrue(firstConnection.disconnected);
             assertTrue(secondConnection.disconnected);
+        } finally {
+            uploads.shutdownNow();
+            cancellations.shutdownNow();
+        }
+    }
+
+    @Test
+    public void cancelClosesBlockingInputAndReturnsCanceledWithoutManualRelease() throws Exception {
+        BlockingInputStream input = new BlockingInputStream();
+        ControlledConnection connection = new ControlledConnection();
+        UploadManager manager = new UploadManager(ignored -> input, ignored -> connection);
+        ExecutorService uploads = Executors.newSingleThreadExecutor();
+        ExecutorService cancellations = Executors.newSingleThreadExecutor();
+        try {
+            Future<UploadResult> upload = uploads.submit(() -> manager.upload(task(1), null));
+            assertTrue(input.readStarted.await(3, TimeUnit.SECONDS));
+
+            cancellations.submit(manager::cancel).get(3, TimeUnit.SECONDS);
+
+            assertCanceled(upload);
+            assertTrue(input.closed);
         } finally {
             uploads.shutdownNow();
             cancellations.shutdownNow();
@@ -337,6 +374,24 @@ public final class UploadManagerTest {
         @Override public int read() throws IOException { throw new IOException("unexpected byte read"); }
     }
 
+    private static final class BlockingInputStream extends InputStream {
+        final CountDownLatch readStarted = new CountDownLatch(1);
+        final CountDownLatch releaseRead = new CountDownLatch(1);
+        volatile boolean closed;
+        @Override public int read(byte[] buffer, int offset, int length) throws IOException {
+            readStarted.countDown();
+            try {
+                if (!releaseRead.await(3, TimeUnit.SECONDS)) throw new IOException("input was not closed");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException(e);
+            }
+            throw new IOException("input closed");
+        }
+        @Override public int read() throws IOException { return read(new byte[1], 0, 1); }
+        @Override public void close() { closed = true; releaseRead.countDown(); }
+    }
+
     private static final class ControlledConnection extends HttpURLConnection {
         final AtomicInteger outputStreamCalls = new AtomicInteger();
         final AtomicInteger outputCloseCalls = new AtomicInteger();
@@ -382,6 +437,27 @@ public final class UploadManagerTest {
             disconnected = true;
             releaseOutputStream.countDown();
         }
+        @Override public boolean usingProxy() { return false; }
+        @Override public void connect() { }
+    }
+
+    private static final class CancelOnOutputConnection extends HttpURLConnection {
+        final AtomicInteger outputCloseCalls = new AtomicInteger();
+        private final Runnable onOutputCreated;
+        CancelOnOutputConnection(Runnable onOutputCreated) throws IOException {
+            super(new URL("http://127.0.0.1/upload"));
+            this.onOutputCreated = onOutputCreated;
+        }
+        @Override public OutputStream getOutputStream() {
+            OutputStream output = new OutputStream() {
+                @Override public void write(int value) { }
+                @Override public void close() { outputCloseCalls.incrementAndGet(); }
+            };
+            onOutputCreated.run();
+            return output;
+        }
+        @Override public int getResponseCode() { return 200; }
+        @Override public void disconnect() { }
         @Override public boolean usingProxy() { return false; }
         @Override public void connect() { }
     }
