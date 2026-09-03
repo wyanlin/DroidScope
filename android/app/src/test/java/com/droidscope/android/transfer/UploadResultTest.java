@@ -204,6 +204,7 @@ public final class UploadResultTest {
         @Override public void setReadTimeout(int timeout) { delegate.setReadTimeout(timeout); }
         @Override public int getResponseCode() throws IOException { return delegate.getResponseCode(); }
         @Override public String getResponseMessage() throws IOException {
+            String message = delegate.getResponseMessage();
             responseReady.countDown();
             try {
                 if (!allowResult.await(3, TimeUnit.SECONDS)) throw new IOException("result was not released");
@@ -211,7 +212,7 @@ public final class UploadResultTest {
                 Thread.currentThread().interrupt();
                 throw new IOException(e);
             }
-            return delegate.getResponseMessage();
+            return message;
         }
         @Override public void disconnect() { delegate.disconnect(); }
         @Override public boolean usingProxy() { return delegate.usingProxy(); }

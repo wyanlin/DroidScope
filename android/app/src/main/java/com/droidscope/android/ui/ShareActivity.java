@@ -26,8 +26,7 @@ public final class ShareActivity extends Activity {
     private Button cancelButton;
     private volatile UploadManager currentUpload;
     private volatile PingClient currentPing;
-    private volatile boolean canceled;
-    private volatile boolean terminal;
+    private final TransferUiState transferUiState = new TransferUiState();
 
     @Override
     protected void onCreate(Bundle state) {
@@ -51,15 +50,14 @@ public final class ShareActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        canceled = true;
+        transferUiState.destroy();
         cancelCurrentTransferAsync();
         super.onDestroy();
     }
 
     private void cancelTransfer() {
-        if (terminal) return;
-        canceled = true;
-        showTerminal("已取消发送");
+        if (!transferUiState.cancelAndClaimTerminal()) return;
+        showClaimedTerminal("已取消发送");
         cancelCurrentTransferAsync();
     }
 
@@ -75,7 +73,7 @@ public final class ShareActivity extends Activity {
 
     private void transfer(Intent intent) {
         List<ShareFile> files = parseIntent(intent);
-        if (canceled) return;
+        if (transferUiState.isCanceled()) return;
         StringBuilder summary = new StringBuilder();
         for (ShareFile file : files) {
             Log.i(TAG, "URI=" + file.getUri());
@@ -86,16 +84,16 @@ public final class ShareActivity extends Activity {
         }
         final String metadata = files.isEmpty() ? "未找到可分享文件" : summary.toString();
         showStatus("正在连接电脑…\n" + metadata);
-        if (canceled) return;
+        if (transferUiState.isCanceled()) return;
         PingClient ping = new PingClient();
         currentPing = ping;
-        if (canceled) {
+        if (transferUiState.isCanceled()) {
             ping.cancel();
             return;
         }
         UploadResult pingResult = ping.ping();
         if (currentPing == ping) currentPing = null;
-        if (canceled) return;
+        if (transferUiState.isCanceled()) return;
         if (!pingResult.isSuccess()) {
             showTerminal(TransferStatusText.failure(pingResult) + "\n" + metadata);
             return;
@@ -105,12 +103,12 @@ public final class ShareActivity extends Activity {
             return;
         }
         for (int i = 0; i < files.size(); i++) {
-            if (canceled) return;
+            if (transferUiState.isCanceled()) return;
             final int fileNumber = i + 1;
             ShareFile file = files.get(i);
             UploadManager manager = new UploadManager(getContentResolver());
             currentUpload = manager;
-            if (canceled) {
+            if (transferUiState.isCanceled()) {
                 manager.cancel();
                 return;
             }
@@ -120,8 +118,11 @@ public final class ShareActivity extends Activity {
             };
             UploadResult result = manager.upload(new UploadTask(file), listener);
             if (currentUpload == manager) currentUpload = null;
-            if (canceled || result.getError() == com.droidscope.android.transfer.UploadError.CANCELED) {
-                if (!terminal) showTerminal("已取消发送\n" + metadata);
+            if (transferUiState.isCanceled()
+                    || result.getError() == com.droidscope.android.transfer.UploadError.CANCELED) {
+                if (transferUiState.cancelAndClaimTerminal()) {
+                    showClaimedTerminal("已取消发送\n" + metadata);
+                }
                 return;
             }
             if (!result.isSuccess()) {
@@ -136,15 +137,22 @@ public final class ShareActivity extends Activity {
     private void showStatus(String text) {
         runOnUiThread(() -> {
             if (isFinishing() || isDestroyed()) return;
-            if (!terminal) statusView.setText(text);
+            if (transferUiState.canShowStatus()) statusView.setText(text);
         });
     }
 
     private void showTerminal(String text) {
         runOnUiThread(() -> {
             if (isFinishing() || isDestroyed()) return;
-            if (terminal) return;
-            terminal = true;
+            if (!transferUiState.tryClaimTerminal()) return;
+            statusView.setText(text);
+            cancelButton.setEnabled(false);
+        });
+    }
+
+    private void showClaimedTerminal(String text) {
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed() || transferUiState.isDestroyed()) return;
             statusView.setText(text);
             cancelButton.setEnabled(false);
         });
