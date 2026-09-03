@@ -259,6 +259,32 @@ public final class UploadManagerTest {
         }
     }
 
+    @Test
+    public void cancelReturnsDuringBlockedInputOpenAndClosesLateInputWithoutConnecting() throws Exception {
+        BlockingInputFactory inputFactory = new BlockingInputFactory();
+        AtomicInteger connectionsOpened = new AtomicInteger();
+        UploadManager manager = new UploadManager(inputFactory, ignored -> {
+            connectionsOpened.incrementAndGet();
+            return new ControlledConnection();
+        });
+        ExecutorService uploads = Executors.newSingleThreadExecutor();
+        ExecutorService cancellations = Executors.newSingleThreadExecutor();
+        try {
+            Future<UploadResult> upload = uploads.submit(() -> manager.upload(task(1), null));
+            assertTrue(inputFactory.openStarted.await(3, TimeUnit.SECONDS));
+
+            cancellations.submit(manager::cancel).get(1, TimeUnit.SECONDS);
+
+            inputFactory.releaseOpen.countDown();
+            assertCanceled(upload);
+            assertTrue(inputFactory.returnedInput.closed);
+            assertEquals(0, connectionsOpened.get());
+        } finally {
+            uploads.shutdownNow();
+            cancellations.shutdownNow();
+        }
+    }
+
     private static UploadResult cancelAtCall(Fixture fixture) throws Exception {
         CallGate gate = fixture.gate;
         ExecutorService uploads = Executors.newSingleThreadExecutor();
@@ -390,6 +416,22 @@ public final class UploadManagerTest {
         }
         @Override public int read() throws IOException { return read(new byte[1], 0, 1); }
         @Override public void close() { closed = true; releaseRead.countDown(); }
+    }
+
+    private static final class BlockingInputFactory implements UploadManager.InputStreamFactory {
+        final CountDownLatch openStarted = new CountDownLatch(1);
+        final CountDownLatch releaseOpen = new CountDownLatch(1);
+        final BlockingInputStream returnedInput = new BlockingInputStream();
+        @Override public InputStream open(ShareFile file) throws IOException {
+            openStarted.countDown();
+            try {
+                if (!releaseOpen.await(3, TimeUnit.SECONDS)) throw new IOException("input open not released");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException(e);
+            }
+            return returnedInput;
+        }
     }
 
     private static final class ControlledConnection extends HttpURLConnection {

@@ -44,6 +44,7 @@ public final class UploadManager {
     private boolean canceled;
     private int activeUploads;
     private int inFlightCalls;
+    private int inputOpenCalls;
     private final Map<Thread, Integer> uploadThreadCounts = new HashMap<>();
     private final Set<HttpURLConnection> currentConnections = new HashSet<>();
     private final Set<InputStream> currentInputs = new HashSet<>();
@@ -94,7 +95,7 @@ public final class UploadManager {
         if (calledFromUploadThread) return;
         boolean interrupted = false;
         synchronized (stateLock) {
-            while (activeUploads > 0 || inFlightCalls > 0) {
+            while (activeUploads > inputOpenCalls || inFlightCalls > 0) {
                 try { stateLock.wait(); } catch (InterruptedException e) { interrupted = true; }
             }
         }
@@ -123,7 +124,7 @@ public final class UploadManager {
     private UploadResult uploadInternal(UploadTask task, ProgressListener listener) throws IOException {
         ShareFile file = task.getFile();
         if (file.getSize() < 0) return UploadResult.failure("file size unavailable");
-        InputStream input = call(CALL_INPUT_OPEN, () -> inputFactory.open(file));
+        InputStream input = openInput(file);
         if (input == null) return UploadResult.failure("cannot open URI");
         if (!registerInput(input)) {
             input.close();
@@ -223,6 +224,34 @@ public final class UploadManager {
         } finally {
             synchronized (stateLock) {
                 inFlightCalls--;
+                stateLock.notifyAll();
+            }
+        }
+    }
+
+    private InputStream openInput(ShareFile file) throws IOException {
+        synchronized (stateLock) {
+            if (canceled) throw new UploadCanceledException();
+            inputOpenCalls++;
+        }
+        try {
+            observer.beforeCall(CALL_INPUT_OPEN);
+            synchronized (stateLock) {
+                if (canceled) throw new UploadCanceledException();
+            }
+            InputStream input = inputFactory.open(file);
+            boolean closeInput;
+            synchronized (stateLock) {
+                closeInput = canceled;
+            }
+            if (closeInput) {
+                if (input != null) closeQuietly(input);
+                throw new UploadCanceledException();
+            }
+            return input;
+        } finally {
+            synchronized (stateLock) {
+                inputOpenCalls--;
                 stateLock.notifyAll();
             }
         }
