@@ -2,23 +2,52 @@ package com.usbfileshare;
 
 import com.usbfileshare.server.ReceiverServer;
 import com.usbfileshare.adb.AdbManager;
+import com.usbfileshare.adb.AdbMonitor;
+import com.usbfileshare.tray.TrayManager;
 
 import java.io.IOException;
+import java.net.BindException;
 import java.nio.file.Path;
+import java.util.concurrent.CountDownLatch;
+import javax.swing.JOptionPane;
 
 public final class Main {
     private Main() {}
 
     public static void main(String[] args) throws Exception {
         Path directory = Path.of(args.length > 0 ? args[0] : "D:\\ihblu\\wyrepo\\USB_File_Share\\PhoneReceive");
-        ReceiverServer server = new ReceiverServer(9527, directory);
+        ReceiverServer server;
+        try {
+            server = new ReceiverServer(9527, directory);
+        } catch (BindException e) {
+            String message = "端口 9527 已被占用，请先关闭已运行的 USB File Share。";
+            System.err.println(message);
+            JOptionPane.showMessageDialog(null, message, "USB File Share 启动失败", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
         server.start();
         System.out.println("USB File Share Receiver listening on http://127.0.0.1:9527");
+        AdbManager adbManager = new AdbManager();
         try {
-            System.out.println("ADB reverse ready for: " + new AdbManager().establishReverse());
+            System.out.println("ADB reverse ready for: " + adbManager.establishReverse());
         } catch (IOException | InterruptedException e) {
             System.err.println("ADB unavailable: " + e.getMessage());
         }
-        Thread.currentThread().join();
+        AdbMonitor adbMonitor = new AdbMonitor(adbManager);
+        adbMonitor.start();
+        CountDownLatch exitLatch = new CountDownLatch(1);
+        TrayManager trayManager = TrayManager.start(directory, adbManager, exitLatch::countDown);
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            if (trayManager != null) trayManager.close();
+            adbMonitor.close();
+            server.close();
+        }, "usb-file-share-shutdown"));
+        try {
+            exitLatch.await();
+        } finally {
+            if (trayManager != null) trayManager.close();
+            adbMonitor.close();
+            server.close();
+        }
     }
 }

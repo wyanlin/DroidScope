@@ -44,10 +44,13 @@ public final class AdbManager {
         List<String> ready = new ArrayList<>();
         for (AdbDevice device : listDevices()) {
             if (!device.isReady()) continue;
-            CommandResult result = run("-s", device.serial(), "reverse", "tcp:9527", "tcp:9527");
-            if (result.exitCode() == 0) ready.add(device.serial());
+            if (establishReverse(device.serial())) ready.add(device.serial());
         }
         return ready;
+    }
+
+    public boolean establishReverse(String serial) throws IOException, InterruptedException {
+        return run("-s", serial, "reverse", "tcp:9527", "tcp:9527").exitCode() == 0;
     }
 
     private CommandResult run(String... args) throws IOException, InterruptedException {

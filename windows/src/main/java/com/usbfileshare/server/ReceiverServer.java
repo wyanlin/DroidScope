@@ -8,7 +8,7 @@ import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.util.concurrent.Executors;
 
-public final class ReceiverServer {
+public final class ReceiverServer implements AutoCloseable {
     private final HttpServer server;
 
     public ReceiverServer(int port, Path storageDirectory) throws IOException {
@@ -20,6 +20,11 @@ public final class ReceiverServer {
 
     public void start() {
         server.start();
+    }
+
+    @Override
+    public void close() {
+        server.stop(0);
     }
 
     private void ping(HttpExchange exchange) throws IOException {
