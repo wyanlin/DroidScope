@@ -9,6 +9,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.HashSet;
+import java.util.Set;
 
 public final class UploadManager {
     private static final int BUFFER_SIZE = 64 * 1024;
@@ -41,6 +43,7 @@ public final class UploadManager {
     private boolean canceled;
     private int activeUploads;
     private int inFlightCalls;
+    private final Set<Thread> uploadThreads = new HashSet<>();
     private HttpURLConnection currentConnection;
 
     public UploadManager(ContentResolver resolver) {
@@ -69,12 +72,15 @@ public final class UploadManager {
 
     public void cancel() {
         HttpURLConnection connection;
+        boolean calledFromUploadThread;
         synchronized (stateLock) {
             canceled = true;
             connection = currentConnection;
+            calledFromUploadThread = uploadThreads.contains(Thread.currentThread());
         }
         observer.onCancelRequested();
         if (connection != null) connection.disconnect();
+        if (calledFromUploadThread) return;
         boolean interrupted = false;
         synchronized (stateLock) {
             while (activeUploads > 0 || inFlightCalls > 0) {
@@ -150,6 +156,7 @@ public final class UploadManager {
         synchronized (stateLock) {
             if (canceled) return false;
             activeUploads++;
+            uploadThreads.add(Thread.currentThread());
             return true;
         }
     }
@@ -158,6 +165,7 @@ public final class UploadManager {
         synchronized (stateLock) {
             boolean wasCanceled = canceled;
             activeUploads--;
+            uploadThreads.remove(Thread.currentThread());
             stateLock.notifyAll();
             return wasCanceled ? canceledResult() : result;
         }

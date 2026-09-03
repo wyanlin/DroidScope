@@ -153,6 +153,22 @@ public final class UploadManagerTest {
         assertTrue(connection.disconnected);
     }
 
+    @Test
+    public void cancelFromProgressListenerReturnsCanceledWithoutDeadlock() throws Exception {
+        ControlledConnection connection = new ControlledConnection();
+        UploadManager manager = new UploadManager(ignored -> oneByteInput(), ignored -> connection);
+        ExecutorService uploads = Executors.newSingleThreadExecutor();
+        try {
+            Future<UploadResult> upload = uploads.submit(() ->
+                    manager.upload(task(1), (sent, total) -> manager.cancel()));
+
+            assertCanceled(upload);
+            assertTrue(connection.disconnected);
+        } finally {
+            uploads.shutdownNow();
+        }
+    }
+
     private static UploadResult cancelAtCall(Fixture fixture) throws Exception {
         CallGate gate = fixture.gate;
         ExecutorService uploads = Executors.newSingleThreadExecutor();
