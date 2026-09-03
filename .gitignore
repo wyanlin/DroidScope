@@ -1,0 +1,25 @@
+# Android and Gradle
+android/.gradle/
+android/.idea/
+android/app/build/
+android/build/
+android/local.properties
+
+# Generated build output
+build-out/
+
+# Runtime receive and test artifacts
+PhoneReceive/
+receive/
+receiver-test.err
+receiver-test.log
+
+# IDE and operating-system files
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Local Codex and agent state
+.codex/
+.agents/
