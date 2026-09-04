@@ -5,6 +5,9 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
+import android.widget.Button;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.droidscope.android.model.ShareFile;
@@ -17,18 +20,104 @@ import com.droidscope.android.util.UriUtils;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.io.IOException;
 
 public final class ShareActivity extends Activity {
     private static final String TAG = "DroidScope";
+    private static final TransferGate TRANSFER_GATE = new TransferGate();
+    private TextView statusView;
+    private Button retryButton;
+    private Button cancelButton;
+    private volatile UploadManager currentUpload;
+    private volatile PingClient currentPing;
+    private volatile Thread transferThread;
+    private volatile boolean ownsTransferGate;
+    private final TransferUiState transferUiState = new TransferUiState();
+    private Intent transferIntent;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        TextView view = new TextView(this);
-        view.setPadding(48, 48, 48, 48);
-        setContentView(view);
-        List<ShareFile> files = parseIntent(getIntent());
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        int padding = 48;
+        layout.setPadding(padding, padding, padding, padding);
+        statusView = new TextView(this);
+        retryButton = new Button(this);
+        retryButton.setText("重试");
+        retryButton.setVisibility(View.GONE);
+        retryButton.setOnClickListener(ignored -> retryTransfer());
+        cancelButton = new Button(this);
+        cancelButton.setText("取消");
+        cancelButton.setTextAppearance(this, R.style.ShareCancelButton);
+        cancelButton.setOnClickListener(ignored -> cancelTransfer());
+        layout.addView(statusView);
+        layout.addView(retryButton);
+        layout.addView(cancelButton);
+        setContentView(layout);
+        statusView.setText("正在准备发送…");
+        transferIntent = getIntent();
+        startTransfer(transferIntent);
+    }
+
+    @Override
+    protected void onDestroy() {
+        transferUiState.destroy();
+        interruptWaitingTransfer();
+        cancelCurrentTransferAsync();
+        super.onDestroy();
+    }
+
+    private void cancelTransfer() {
+        if (!transferUiState.cancelAndClaimTerminal()) return;
+        showClaimedTerminal("已取消发送");
+        interruptWaitingTransfer();
+        cancelCurrentTransferAsync();
+    }
+
+    private void retryTransfer() {
+        if (!transferUiState.beginRetry()) return;
+        retryButton.setVisibility(View.GONE);
+        cancelButton.setEnabled(true);
+        showStatus("正在重新连接电脑…");
+        startTransfer(transferIntent);
+    }
+
+    private void startTransfer(Intent intent) {
+        Thread worker = new Thread(() -> {
+            boolean acquired = false;
+            try {
+                acquired = new ShareTransferEntry(TRANSFER_GATE, transferUiState,
+                        new ShareTransferEntry.Listener() {
+                            @Override public void onAcquired() { ownsTransferGate = true; }
+                            @Override public void onReleased() { ownsTransferGate = false; }
+                        }).run(() -> transfer(intent));
+            } finally {
+                ownsTransferGate = false;
+                if (transferThread == Thread.currentThread()) transferThread = null;
+            }
+        }, "usb-file-share-transfer");
+        transferThread = worker;
+        worker.start();
+    }
+
+    private void interruptWaitingTransfer() {
+        Thread worker = transferThread;
+        if (worker != null && !ownsTransferGate) worker.interrupt();
+    }
+
+    private void cancelCurrentTransferAsync() {
+        PingClient ping = currentPing;
+        UploadManager manager = currentUpload;
+        if (ping == null && manager == null) return;
+        new Thread(() -> {
+            if (ping != null) ping.cancel();
+            if (manager != null) manager.cancel();
+        }, "usb-file-share-cancel").start();
+    }
+
+    private void transfer(Intent intent) {
+        List<ShareFile> files = parseIntent(intent);
+        if (transferUiState.isCanceled()) return;
         StringBuilder summary = new StringBuilder();
         for (ShareFile file : files) {
             Log.i(TAG, "URI=" + file.getUri());
@@ -38,39 +127,101 @@ public final class ShareActivity extends Activity {
             summary.append(file.getDisplayName()).append("\n");
         }
         final String metadata = files.isEmpty() ? "未找到可分享文件" : summary.toString();
-        view.setText("正在连接电脑…\n" + metadata);
-        new Thread(() -> transfer(files, metadata, view), "usb-file-share-transfer").start();
+        showStatus("正在连接电脑…\n" + metadata);
+        new ShareTransferCoordinator(new ShareTransferCoordinator.Factory() {
+            @Override public ShareTransferCoordinator.Ping createPing() {
+                PingClient ping = new PingClient();
+                currentPing = ping;
+                return () -> {
+                    UploadResult result = ping.ping();
+                    if (currentPing == ping) currentPing = null;
+                    return result;
+                };
+            }
+
+            @Override public ShareTransferCoordinator.Upload createUpload(ShareFile file,
+                    int fileNumber, int fileCount) {
+                UploadManager manager = new UploadManager(getContentResolver());
+                currentUpload = manager;
+                return () -> {
+                    ProgressListener listener = (sent, total) -> {
+                        long percent = total <= 0 ? 0 : sent * 100 / total;
+                        showStatus("上传第 " + fileNumber + "/" + fileCount + " 个："
+                                + percent + "%\n" + metadata);
+                    };
+                    UploadResult result = manager.upload(new UploadTask(file), listener);
+                    if (currentUpload == manager) currentUpload = null;
+                    return result;
+                };
+            }
+        }, new ShareTransferPresenter(transferUiState, new ShareTransferPresenter.Port() {
+            @Override public void showFailure(String text, boolean retryable) {
+                showPresentedFailure(text + "\n" + metadata, retryable);
+            }
+            @Override public void showEmpty() { showTerminal("电脑已连接\n" + metadata); }
+            @Override public void finishSuccess(int fileCount) {
+                showSuccess("全部发送成功（" + fileCount + " 个）\n" + metadata);
+            }
+            @Override public void showCanceled() { showClaimedTerminal("已取消发送\n" + metadata); }
+        })).transfer(files);
     }
 
-    private void transfer(List<ShareFile> files, String metadata, TextView view) {
-        try {
-            if (!new PingClient().ping()) {
-                runOnUiThread(() -> view.setText("电脑未连接\n" + metadata));
-                return;
-            }
-            if (files.isEmpty()) {
-                runOnUiThread(() -> view.setText("电脑已连接\n" + metadata));
-                return;
-            }
-            UploadManager manager = new UploadManager(getContentResolver());
-            for (int i = 0; i < files.size(); i++) {
-                final int fileNumber = i + 1;
-                ShareFile file = files.get(i);
-                ProgressListener listener = (sent, total) -> runOnUiThread(() -> {
-                    long percent = total <= 0 ? 0 : sent * 100 / total;
-                    view.setText("上传第 " + fileNumber + "/" + files.size() + " 个：" + percent + "%\n" + metadata);
-                });
-                UploadResult result = manager.upload(new UploadTask(file), listener);
-                if (!result.isSuccess()) {
-                    runOnUiThread(() -> view.setText("第 " + fileNumber + " 个文件发送失败：" + result.getMessage() + "\n" + metadata));
-                    return;
-                }
-            }
-            runOnUiThread(() -> view.setText("全部发送成功（" + files.size() + " 个）\n" + metadata));
-        } catch (IOException e) {
-            Log.w(TAG, "TRANSFER_FAILED=" + e.getMessage());
-            runOnUiThread(() -> view.setText("电脑未连接\n" + metadata));
-        }
+    private void showStatus(String text) {
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            if (transferUiState.canShowStatus()) statusView.setText(text);
+        });
+    }
+
+    private void showTerminal(String text) {
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            if (!transferUiState.tryClaimTerminal()) return;
+            statusView.setText(text);
+            cancelButton.setEnabled(false);
+            retryButton.setVisibility(View.GONE);
+        });
+    }
+
+    private void showFailure(UploadResult result, String text) {
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            if (!transferUiState.claimFailure(UploadManager.isRetryable(result))) return;
+            statusView.setText(text);
+            boolean retryable = transferUiState.canRetry();
+            retryButton.setVisibility(retryable ? View.VISIBLE : View.GONE);
+            cancelButton.setEnabled(true);
+        });
+    }
+
+    private void showPresentedFailure(String text, boolean retryable) {
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            if (!transferUiState.canShowFailure()) return;
+            statusView.setText(text);
+            retryButton.setVisibility(retryable ? View.VISIBLE : View.GONE);
+            cancelButton.setEnabled(true);
+        });
+    }
+
+    private void showSuccess(String text) {
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            if (!transferUiState.tryClaimTerminal()) return;
+            statusView.setText(text);
+            cancelButton.setEnabled(false);
+            retryButton.setVisibility(View.GONE);
+            finish();
+        });
+    }
+
+    private void showClaimedTerminal(String text) {
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed() || transferUiState.isDestroyed()) return;
+            statusView.setText(text);
+            cancelButton.setEnabled(false);
+            retryButton.setVisibility(View.GONE);
+        });
     }
 
     private List<ShareFile> parseIntent(Intent intent) {
