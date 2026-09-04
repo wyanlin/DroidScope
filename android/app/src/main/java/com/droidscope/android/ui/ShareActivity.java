@@ -10,6 +10,7 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import com.droidscope.android.R;
 import com.droidscope.android.model.ShareFile;
 import com.droidscope.android.transfer.PingClient;
 import com.droidscope.android.transfer.ProgressListener;
