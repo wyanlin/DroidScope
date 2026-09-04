@@ -31,13 +31,19 @@ final class ShareTransferCoordinator {
 
     void transfer(List<ShareFile> files) {
         if (callback.isCanceled()) { callback.onCanceled(); return; }
-        UploadResult ping = factory.createPing().ping();
+        Ping pingOperation = factory.createPing();
+        // The Activity registers the operation in the factory. Cancellation may
+        // have missed it while the factory was still creating it.
+        if (callback.isCanceled()) { callback.onCanceled(); return; }
+        UploadResult ping = pingOperation.ping();
         if (callback.isCanceled()) { callback.onCanceled(); return; }
         if (!ping.isSuccess()) { callback.onFailure(ping, 0); return; }
         if (files.isEmpty()) { callback.onEmpty(); return; }
         for (int i = 0; i < files.size(); i++) {
             if (callback.isCanceled()) { callback.onCanceled(); return; }
-            UploadResult upload = factory.createUpload(files.get(i), i + 1, files.size()).upload();
+            Upload uploadOperation = factory.createUpload(files.get(i), i + 1, files.size());
+            if (callback.isCanceled()) { callback.onCanceled(); return; }
+            UploadResult upload = uploadOperation.upload();
             if (callback.isCanceled() || upload.getError() == UploadError.CANCELED) {
                 callback.onCanceled(); return;
             }

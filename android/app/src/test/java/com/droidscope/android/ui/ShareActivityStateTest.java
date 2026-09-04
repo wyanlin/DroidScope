@@ -2,6 +2,7 @@ package com.droidscope.android.ui;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertEquals;
 
 import com.droidscope.android.transfer.UploadManager;
 import com.droidscope.android.transfer.UploadError;
@@ -164,6 +165,55 @@ public final class ShareActivityStateTest {
 
         new ShareTransferPresenter(new TransferUiState(), port).onSuccess(1);
         assertTrue(port.finished == 1);
+    }
+
+    @Test
+    public void cancelDuringPingCreationDoesNotStartPing() {
+        assertNoOperationAfterCancellation(true, false);
+    }
+
+    @Test
+    public void destroyDuringPingCreationDoesNotStartPing() {
+        assertNoOperationAfterCancellation(true, true);
+    }
+
+    @Test
+    public void cancelDuringUploadCreationDoesNotStartUpload() {
+        assertNoOperationAfterCancellation(false, false);
+    }
+
+    @Test
+    public void destroyDuringUploadCreationDoesNotStartUpload() {
+        assertNoOperationAfterCancellation(false, true);
+    }
+
+    private static void assertNoOperationAfterCancellation(boolean duringPing, boolean destroy) {
+        TransferUiState state = new TransferUiState();
+        Port port = new Port();
+        int[] calls = new int[2];
+        Runnable cancel = () -> {
+            if (destroy) state.destroy();
+            else state.cancelAndClaimTerminal();
+        };
+        ShareTransferCoordinator.Factory factory = new ShareTransferCoordinator.Factory() {
+            @Override public ShareTransferCoordinator.Ping createPing() {
+                if (duringPing) cancel.run();
+                return () -> { calls[0]++; return UploadResult.success(200); };
+            }
+            @Override public ShareTransferCoordinator.Upload createUpload(
+                    com.droidscope.android.model.ShareFile file, int number, int count) {
+                cancel.run();
+                return () -> { calls[1]++; return UploadResult.success(201); };
+            }
+        };
+
+        new ShareTransferCoordinator(factory, new ShareTransferPresenter(state, port))
+                .transfer(Arrays.asList(null, null));
+
+        assertTrue(state.isCanceled());
+        assertEquals("Ping started after cancellation during creation", duringPing ? 0 : 1, calls[0]);
+        assertEquals("Upload started after cancellation during creation", 0, calls[1]);
+        assertEquals(0, port.finished);
     }
 
     @Test

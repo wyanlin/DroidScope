@@ -5,8 +5,6 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import com.droidscope.android.model.ShareFile;
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpServer;
 
 import org.junit.Test;
 
@@ -15,6 +13,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketException;
 import java.net.URL;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -30,15 +31,20 @@ public final class UploadManagerTest {
         CountDownLatch firstChunk = new CountDownLatch(1);
         CountDownLatch connectionClosed = new CountDownLatch(1);
         AtomicInteger received = new AtomicInteger();
-        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/upload", exchange -> receive(exchange, firstChunk, connectionClosed, received));
-        server.start();
+        ServerSocket server = new ServerSocket();
+        server.bind(new InetSocketAddress("127.0.0.1", 0));
+        server.setSoTimeout(3000);
+        ExecutorService receiver = Executors.newSingleThreadExecutor();
         ExecutorService uploads = Executors.newSingleThreadExecutor();
         ExecutorService cancellations = Executors.newSingleThreadExecutor();
+        GateInputStream input = new GateInputStream();
         try {
-            GateInputStream input = new GateInputStream();
+            Future<?> reception = receiver.submit(() -> {
+                receive(server, firstChunk, connectionClosed, received);
+                return null;
+            });
             UploadManager manager = new UploadManager(ignored -> input,
-                    "http://127.0.0.1:" + server.getAddress().getPort() + "/upload");
+                    "http://127.0.0.1:" + server.getLocalPort() + "/upload");
             Future<UploadResult> upload = uploads.submit(() -> manager.upload(task(2), null));
             assertTrue(firstChunk.await(3, TimeUnit.SECONDS));
             assertTrue(input.secondReadStarted.await(3, TimeUnit.SECONDS));
@@ -49,11 +55,14 @@ public final class UploadManagerTest {
 
             cancel.get(3, TimeUnit.SECONDS);
             assertCanceled(upload);
+            reception.get(3, TimeUnit.SECONDS);
             assertEquals(1, received.get());
         } finally {
+            input.releaseSecondRead.countDown();
             uploads.shutdownNow();
             cancellations.shutdownNow();
-            server.stop(0);
+            server.close();
+            receiver.shutdownNow();
         }
     }
 
@@ -347,18 +356,28 @@ public final class UploadManagerTest {
         assertEquals(UploadError.CANCELED, result.getError());
     }
 
-    private static void receive(HttpExchange exchange, CountDownLatch firstChunk,
+    private static void receive(ServerSocket server, CountDownLatch firstChunk,
             CountDownLatch connectionClosed, AtomicInteger received) throws IOException {
-        try (InputStream request = exchange.getRequestBody()) {
-            int value;
-            while ((value = request.read()) != -1) {
-                received.incrementAndGet();
-                firstChunk.countDown();
+        try (Socket socket = server.accept()) {
+            socket.setSoTimeout(3000);
+            InputStream request = socket.getInputStream();
+            // Consume only headers, without buffering away the first body byte.
+            String delimiter = "\r\n\r\n";
+            int matched = 0;
+            while (matched < delimiter.length()) {
+                int value = request.read();
+                if (value == -1) throw new IOException("connection closed before headers");
+                matched = value == delimiter.charAt(matched) ? matched + 1 : (value == '\r' ? 1 : 0);
             }
-        } catch (IOException ignored) {
-        } finally {
+            try {
+                while (request.read() != -1) {
+                    received.incrementAndGet();
+                    firstChunk.countDown();
+                }
+            } catch (SocketException disconnected) {
+                // A reset is also a peer disconnect; timeouts must fail the test.
+            }
             connectionClosed.countDown();
-            exchange.close();
         }
     }
 
