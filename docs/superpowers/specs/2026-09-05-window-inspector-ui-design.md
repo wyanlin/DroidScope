@@ -2,7 +2,7 @@
 
 ## 1．设计结论
 
-Window Inspector 采用面向 Windows 主程序的 IDE 三栏式工作台：左侧为模块导航，中间为按 Display 分组的 Window Tree Table，右侧为选中 Window 的常驻详情。
+Window Inspector 采用面向本地浏览器的 IDE 三栏式工作台：左侧为模块导航，中间为按 Display 分组的 Window Tree Table，右侧为选中 Window 的常驻详情。DroidScope Local Core 启动后自动打开系统浏览器，页面与设备数据均在本机运行。
 
 默认视觉主题使用 `Graphite Signal`：蓝黑石墨底色承载长时间调试，青色只标识焦点、选中对象和对象关联，绿色表示正常可用状态，黄色表示可恢复的解析告警，红色表示连接或命令失败。
 
@@ -23,6 +23,7 @@ DroidScope 面向 Android Framework、ROM、BSP 和系统稳定性开发者。Wi
 - [anbeime/skill](https://github.com/anbeime/skill) 中收录的 `frontend-design` 设计方法，用于强调有明确产品身份的视觉选择，而不是套用通用后台模板。
 - [shadcn/ui](https://github.com/shadcn-ui/ui) 的低层级、可组合组件思路，用于约束搜索框、筛选器、页签和状态反馈的一致性。
 - [Ant Design Pro](https://github.com/ant-design/ant-design-pro) 的企业级工作台信息架构，用于参考稳定的侧边导航与高密度数据页面组织方式。
+- [Perfetto](https://perfetto.dev/docs/) 的本地优先模式，用于参考可离线运行、在浏览器内处理本地诊断数据的产品形态。
 - Android Studio、Chrome DevTools、Perfetto 和 Wireshark 的工程工具交互习惯，用于降低目标用户的学习成本。
 
 这些参考只用于提取信息层级和交互原则，不直接复制其页面或品牌视觉。
@@ -31,7 +32,7 @@ DroidScope 面向 Android Framework、ROM、BSP 和系统稳定性开发者。Wi
 
 ### 3.1 本次范围
 
-- Windows 主程序中的 Window Inspector 页面。
+- PC 端本地浏览器中的 Window Inspector 页面。
 - 全局设备上下文、连接状态和 Snapshot 刷新入口。
 - Window 搜索、筛选、分组列表和选中状态。
 - Window 结构化详情与原始 `dumpsys` block 查看。
@@ -40,12 +41,12 @@ DroidScope 面向 Android Framework、ROM、BSP 和系统稳定性开发者。Wi
 
 ### 3.2 非本次范围
 
-- Windows 托盘图标重设计。
+- Windows、macOS 和 Linux 的托盘图标重设计。
 - Android 分享 App 页面重设计。
 - Activity、Surface、Input、Process 和 Binder Inspector 的实际页面。
 - Window 与其他系统对象的关联交互。
 - Snapshot Diff、Perfetto 和 Diagnose 页面。
-- Windows UI 技术框架选型与工程迁移。
+- Tauri、Electron 或其他独立桌面外壳。
 
 ## 4．产品边界
 
@@ -55,17 +56,32 @@ DroidScope 的界面承载关系如下：
 Android App
 └── 系统分享、文件发送
 
-Windows Tray
-└── 后台状态、打开主窗口、重连、退出
+DroidScope Local Core
+├── ADB、Collector、Parser、Snapshot
+├── 本地静态 Web 资源
+├── 仅监听 127.0.0.1
+└── 启动系统浏览器
 
-Windows Main Window
+System Browser
 ├── Device Overview
 ├── Window Inspector
 ├── Logcat
 └── Shell
+
+Desktop Tray Adapter
+└── 后台状态、打开页面、重连、退出
 ```
 
-Window Inspector 只存在于 Windows 主窗口。托盘继续保持轻量，不承载 Inspector 数据。
+Window Inspector 只存在于本地 Web UI。托盘继续保持轻量，不承载 Inspector 数据；没有托盘能力的平台仍可通过命令行启动 Local Core 和打开页面。
+
+### 4.1 Local-first 运行约束
+
+- React、样式、字体、图标和后续 Perfetto UI 均作为本地静态资源随发行包提供。
+- 运行时不得依赖 CDN、在线字体、远程 JavaScript、账号或云端接口。
+- Local Core 仅绑定 `127.0.0.1`，不得监听 `0.0.0.0`。
+- Window、日志、Snapshot 和 Trace 数据仅在本机处理，默认不上传。
+- 浏览器通过受限的本地 JSON interface 和 SSE 访问 Local Core，不获得任意 shell 执行能力。
+- 跨平台差异集中在 Process、File System、Tray 和 ADB Locator Adapter，Collector、Parser、Domain Model 与 Web UI 不感知操作系统。
 
 ## 5．信息架构
 
@@ -98,17 +114,17 @@ Window Inspector
 
 ## 6．主界面布局
 
-### 6.1 推荐尺寸
+### 6.1 推荐视口尺寸
 
-- 推荐窗口尺寸：`1440 × 900 px`。
-- 最小窗口尺寸：`1100 × 700 px`。
+- 推荐浏览器视口：`1440 × 900 px`。
+- 最小浏览器视口：`1100 × 700 px`。
 - 左侧导航默认宽度：`184 px`，可折叠到 `56 px`。
 - 右侧详情默认宽度：`330 px`，可在 `280—480 px` 范围拖动。
 - 中间 Tree Table 占用剩余空间，最小宽度为 `450 px`。
 - 顶栏高度：`52 px`。
 - 底部状态栏高度：`27 px`。
 
-小于最小宽度时不继续压缩字段。优先折叠左侧导航，再将右侧详情切换为覆盖式抽屉。
+小于最小宽度时不继续压缩字段。优先折叠左侧导航，再将右侧详情切换为覆盖式抽屉。V0.1 面向桌面浏览器，不专门适配手机屏幕。
 
 ### 6.2 三栏职责
 
@@ -421,7 +437,9 @@ Tree Table + Detail + Status
 
 ## 20．已确认决策
 
-- 设计对象是 Windows 主程序中的 Window Inspector，不是托盘或 Android App。
+- 设计对象是由本地 DroidScope Core 提供的浏览器端 Window Inspector，不是托盘或 Android App。
+- 首版启动 Local Core 后自动打开系统浏览器，不引入 Tauri 或 Electron。
+- 跨平台和离线运行是基础约束，不是后续增强项。
 - 使用 IDE 三栏式布局。
 - 默认主题使用 `Graphite Signal`。
 - 主体列表使用按 Display 分组的 Tree Table。
