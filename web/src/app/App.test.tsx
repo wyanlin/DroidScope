@@ -8,6 +8,7 @@ function clientFor(devices: Awaited<ReturnType<DroidScopeClient['listDevices']>>
   return {
     getHealth: async () => ({ status: 'ok', platform: 'Windows', version: '0.1' }),
     listDevices: async () => devices,
+    subscribeDevices: () => () => {},
   }
 }
 
@@ -40,6 +41,7 @@ describe('App', () => {
     const client: DroidScopeClient = {
       getHealth: async () => ({ status: 'ok', platform: 'Windows', version: '0.1' }),
       listDevices: async () => { throw new Error('DEVICE_LIST_FAILED:503') },
+      subscribeDevices: () => () => {},
     }
     render(<App client={client} />)
     expect(await screen.findByText('ADB is unavailable.')).toBeInTheDocument()

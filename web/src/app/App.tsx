@@ -18,6 +18,7 @@ export function App({ client }: AppProps) {
 
   useEffect(() => {
     client.listDevices().then(setDevices).catch(() => setError(true))
+    return client.subscribeDevices(setDevices)
   }, [client])
 
   return (

@@ -15,4 +15,5 @@ export interface CoreHealth {
 export interface DroidScopeClient {
   getHealth(): Promise<CoreHealth>
   listDevices(): Promise<DeviceSummary[]>
+  subscribeDevices(onDevices: (devices: DeviceSummary[]) => void): () => void
 }
