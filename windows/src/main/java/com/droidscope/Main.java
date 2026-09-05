@@ -17,6 +17,19 @@ public final class Main {
     private Main() {}
 
     public static void main(String[] args) throws Exception {
+        Path lockFile = Path.of(System.getProperty("user.home"), ".droidscope", "DroidScope.lock");
+        try (SingleInstanceLock instanceLock = SingleInstanceLock.acquire(lockFile)) {
+            if (instanceLock == null) {
+                String message = "DroidScope is already running.";
+                System.err.println(message);
+                JOptionPane.showMessageDialog(null, message, "DroidScope", JOptionPane.INFORMATION_MESSAGE);
+                return;
+            }
+            run(args);
+        }
+    }
+
+    private static void run(String[] args) throws Exception {
         Path directory = Path.of(args.length > 0 ? args[0]
                 : Path.of(System.getProperty("user.home"), "DroidScope", "PhoneReceive").toString());
         ReceiverServer server;
