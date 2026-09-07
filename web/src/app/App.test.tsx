@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { App } from './App'
 import type { DroidScopeClient } from '../local-client/DroidScopeClient'
@@ -63,5 +63,16 @@ describe('App', () => {
     rerender(<App client={clientFor([{ serial: 'READY', state: 'device', ready: true }])} />)
     expect(await screen.findByText('READY — Ready')).toBeInTheDocument()
     expect(screen.queryByText('ADB is unavailable.')).not.toBeInTheDocument()
+  })
+
+  it('refreshes the selected device snapshot', async () => {
+    let calls = 0
+    const client = clientFor([{ serial: 'READY', state: 'device', ready: true }])
+    client.getWindows = async () => { calls += 1; return { focusedTarget: null, windows: [] } }
+    render(<App client={client} />)
+    const button = await screen.findByRole('button', { name: 'Refresh Snapshot' })
+    expect(calls).toBe(1)
+    fireEvent.click(button)
+    await waitFor(() => expect(calls).toBe(2))
   })
 })

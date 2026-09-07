@@ -22,6 +22,11 @@ header { display: flex; align-items: baseline; gap: 1rem; }
 header span, small { color: var(--text-secondary); }
 .device-bar { display: flex; gap: .75rem; align-items: center; }
 .device-bar select, .device-bar button { padding: .45rem .65rem; background: var(--surface-raised); color: inherit; border: 1px solid var(--border-default); border-radius: 5px; }
+.refresh-button { cursor: pointer; transition: transform .08s ease, border-color .08s ease; }
+.refresh-button:not(:disabled):hover { border-color: var(--signal-focus); }
+.refresh-button:not(:disabled):active { transform: translateY(1px); }
+.refresh-button:disabled { cursor: not-allowed; opacity: .6; }
+.window-error { color: var(--signal-error); }
 .inspector { display: grid; grid-template-columns: minmax(28rem, 1fr) minmax(20rem, 30rem); gap: 1rem; min-height: 32rem; }
 .window-list, .window-detail { background: var(--surface-raised); border: 1px solid var(--border-default); border-radius: 8px; padding: 1rem; overflow: auto; }
 .window-list input { width: 100%; box-sizing: border-box; padding: .55rem; background: var(--surface-base); color: inherit; border: 1px solid var(--border-default); border-radius: 5px; }

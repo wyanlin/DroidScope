@@ -20,6 +20,8 @@ export function App({ client }: AppProps) {
   const [query, setQuery] = useState('')
   const [selectedSerial, setSelectedSerial] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [refreshing, setRefreshing] = useState(false)
+  const [windowError, setWindowError] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -48,10 +50,12 @@ export function App({ client }: AppProps) {
   useEffect(() => {
     if (!selectedSerial) { setWindows([]); setSelected(null); return }
     let active = true
+    setRefreshing(true)
+    setWindowError(false)
     setWindows(null)
     client.getWindows(selectedSerial).then((snapshot) => {
-      if (active) { setWindows(snapshot.windows); setSelected(null) }
-    }).catch(() => { if (active) setWindows([]) })
+      if (active) { setWindows(snapshot.windows); setSelected(null); setRefreshing(false) }
+    }).catch(() => { if (active) { setWindows([]); setWindowError(true); setRefreshing(false) } })
     return () => { active = false }
   }, [client, selectedSerial, refreshKey])
 
@@ -66,7 +70,7 @@ export function App({ client }: AppProps) {
       {devices === null && !error && <p>Connecting to Local Core…</p>}
       {error && devices === null && <p>ADB is unavailable.</p>}
       {devices?.length === 0 && <p>No Android devices found.</p>}
-      {devices && devices.length > 0 && <div className="device-bar"><label>Device <select value={selectedSerial ?? ''} onChange={(event) => setSelectedSerial(event.target.value || null)}>{devices.map((device) => <option key={device.serial} value={device.serial}>{device.serial} — {stateLabel[device.state]}</option>)}</select></label><button onClick={() => setRefreshKey((value) => value + 1)} disabled={!selectedSerial}>Refresh Snapshot</button></div>}
+      {devices && devices.length > 0 && <div className="device-bar"><label>Device <select value={selectedSerial ?? ''} onChange={(event) => setSelectedSerial(event.target.value || null)}>{devices.map((device) => <option key={device.serial} value={device.serial}>{device.serial} — {stateLabel[device.state]}</option>)}</select></label><button className="refresh-button" onClick={() => setRefreshKey((value) => value + 1)} disabled={!selectedSerial || refreshing}>{refreshing ? 'Refreshing…' : 'Refresh Snapshot'}</button>{windowError && <span className="window-error">Window capture failed</span>}</div>}
       {windows !== null && <section className="inspector">
         <div className="window-list">
           <input aria-label="Search windows" placeholder="Search windows" value={query} onChange={(event) => setQuery(event.target.value)} />
