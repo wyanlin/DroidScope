@@ -10,7 +10,8 @@ const jpackage = javaHome
   ? join(javaHome, 'bin', process.platform === 'win32' ? 'jpackage.exe' : 'jpackage')
   : process.platform === 'win32' ? 'jpackage.exe' : 'jpackage'
 const input = join(root, 'build-out', 'package-input')
-const output = join(root, 'build-out', `DroidScope-${process.platform}`)
+const outputName = process.env.DROID_SCOPE_PACKAGE_OUTPUT ?? `DroidScope-${process.platform}`
+const output = join(root, 'build-out', outputName)
 mkdirSync(input, { recursive: true })
 cpSync(jar, join(input, 'droidscope.jar'))
 const result = spawnSync(jpackage, ['--type', 'app-image', '--name', 'DroidScope', '--dest', output, '--input', input, '--main-jar', 'droidscope.jar', '--main-class', 'com.droidscope.Main', '--java-options', '-Dfile.encoding=UTF-8'], { cwd: root, stdio: 'inherit' })
