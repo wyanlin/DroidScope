@@ -45,13 +45,9 @@ public final class Main {
         }
         server.start();
         System.out.println("DroidScope Receiver listening on http://127.0.0.1:9527");
-        try {
-            System.out.println("ADB reverse ready for: " + adbManager.establishReverse());
-        } catch (IOException | InterruptedException e) {
-            System.err.println("ADB unavailable: " + e.getMessage());
-        }
         AdbMonitor adbMonitor = new AdbMonitor(adbManager, server.deviceEvents()::publish);
         adbMonitor.start();
+        System.out.println("ADB monitor started; reverse setup continues in background");
         BrowserLauncher browserLauncher = new BrowserLauncher();
         browserLauncher.open(sessionToken);
         CountDownLatch exitLatch = new CountDownLatch(1);
