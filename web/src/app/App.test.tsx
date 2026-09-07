@@ -71,8 +71,22 @@ describe('App', () => {
     client.getWindows = async () => { calls += 1; return { focusedTarget: null, windows: [] } }
     render(<App client={client} />)
     const button = await screen.findByRole('button', { name: 'Refresh Snapshot' })
-    expect(calls).toBe(1)
+    await waitFor(() => expect(calls).toBe(1))
     fireEvent.click(button)
     await waitFor(() => expect(calls).toBe(2))
+  })
+
+  it('selects a device delivered after the initial load', async () => {
+    let publish: ((devices: Awaited<ReturnType<DroidScopeClient['listDevices']>>) => void) | undefined
+    const client: DroidScopeClient = {
+      getHealth: async () => ({ status: 'ok', platform: 'Windows', version: '0.1' }),
+      listDevices: async () => [],
+      getWindows: async () => ({ focusedTarget: null, windows: [] }),
+      subscribeDevices: (onDevices) => { publish = onDevices; return () => {} },
+    }
+    render(<App client={client} />)
+    await waitFor(() => expect(publish).toBeDefined())
+    publish?.([{ serial: 'READY', state: 'device', ready: true }])
+    expect(await screen.findByRole('button', { name: 'Refresh Snapshot' })).toBeEnabled()
   })
 })

@@ -23,6 +23,13 @@ export function App({ client }: AppProps) {
   const [refreshing, setRefreshing] = useState(false)
   const [windowError, setWindowError] = useState(false)
 
+  const selectReadyDevice = (nextDevices: DeviceSummary[]) => {
+    setSelectedSerial((current) => {
+      if (current && nextDevices.some((device) => device.serial === current && device.ready)) return current
+      return nextDevices.find((device) => device.ready)?.serial ?? null
+    })
+  }
+
   useEffect(() => {
     let active = true
     setError(false)
@@ -30,8 +37,7 @@ export function App({ client }: AppProps) {
       if (!active) return
       setDevices(nextDevices)
       setError(false)
-      const ready = nextDevices.find((device) => device.ready)
-      if (active) setSelectedSerial(ready?.serial ?? null)
+      if (active) selectReadyDevice(nextDevices)
     }).catch(() => {
       if (active) setError(true)
     })
@@ -39,6 +45,7 @@ export function App({ client }: AppProps) {
       if (active) {
         setDevices(nextDevices)
         setError(false)
+        selectReadyDevice(nextDevices)
       }
     })
     return () => {
