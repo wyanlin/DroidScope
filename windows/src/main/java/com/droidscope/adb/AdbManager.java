@@ -53,6 +53,14 @@ public final class AdbManager {
         return run("-s", serial, "reverse", "tcp:9527", "tcp:9527").exitCode() == 0;
     }
 
+    public String dumpWindows(String serial) throws IOException, InterruptedException {
+        CommandResult result = run("-s", serial, "shell", "dumpsys", "window");
+        if (result.exitCode() != 0) {
+            throw new IOException("dumpsys window failed: " + result.output());
+        }
+        return result.output();
+    }
+
     private CommandResult run(String... args) throws IOException, InterruptedException {
         List<String> command = new ArrayList<>();
         command.add(adbPath);

@@ -8,6 +8,7 @@ import com.droidscope.local.EventTicketHandler;
 import com.droidscope.local.EventTicketStore;
 import com.droidscope.local.SessionGuard;
 import com.droidscope.local.StaticAssetHandler;
+import com.droidscope.window.WindowHandler;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
@@ -37,6 +38,15 @@ public final class ReceiverServer implements AutoCloseable {
         });
         server.createContext("/api/v1/devices", exchange -> {
             if (guard.allow(exchange, false)) new DeviceHandler(adbManager::listDevices).handle(exchange);
+        });
+        server.createContext("/api/v1/windows", exchange -> {
+            if (guard.allow(exchange, false)) new WindowHandler(serial -> {
+                try {
+                    return adbManager.dumpWindows(serial);
+                } catch (IOException | InterruptedException error) {
+                    throw new RuntimeException(error);
+                }
+            }).handle(exchange);
         });
         EventTicketStore tickets = new EventTicketStore(Clock.systemUTC());
         server.createContext("/api/v1/event-tickets", new EventTicketHandler(guard, tickets));
