@@ -17,15 +17,32 @@ export function App({ client }: AppProps) {
   const [error, setError] = useState(false)
 
   useEffect(() => {
-    client.listDevices().then(setDevices).catch(() => setError(true))
-    return client.subscribeDevices(setDevices)
+    let active = true
+    setError(false)
+    client.listDevices().then((nextDevices) => {
+      if (!active) return
+      setDevices(nextDevices)
+      setError(false)
+    }).catch(() => {
+      if (active) setError(true)
+    })
+    const unsubscribe = client.subscribeDevices((nextDevices) => {
+      if (active) {
+        setDevices(nextDevices)
+        setError(false)
+      }
+    })
+    return () => {
+      active = false
+      unsubscribe()
+    }
   }, [client])
 
   return (
     <main className="app-shell">
       <h1>DroidScope</h1>
       {devices === null && !error && <p>Connecting to Local Core…</p>}
-      {error && <p>ADB is unavailable.</p>}
+      {error && devices === null && <p>ADB is unavailable.</p>}
       {devices?.length === 0 && <p>No Android devices found.</p>}
       {devices && devices.length > 0 && (
         <ul>
