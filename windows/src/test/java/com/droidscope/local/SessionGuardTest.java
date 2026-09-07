@@ -19,6 +19,7 @@ public final class SessionGuardTest {
         try {
             URI base = new URI("http://127.0.0.1:" + server.getAddress().getPort());
             assertStatus(base, "/api/v1/devices", "expected-token", "http://127.0.0.1:9527", 204);
+            assertStatus(base, "/api/v1/devices", "expected-token", "http://localhost:9527", 204);
             assertStatus(base, "/api/v1/devices", null, "http://127.0.0.1:9527", 403);
             assertStatus(base, "/api/v1/devices", "wrong-token", "http://127.0.0.1:9527", 403);
             assertStatus(base, "/api/v1/devices", "expected-token", "https://example.test", 403);

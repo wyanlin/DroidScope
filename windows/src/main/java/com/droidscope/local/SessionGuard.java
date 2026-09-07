@@ -8,6 +8,7 @@ import java.security.MessageDigest;
 
 public final class SessionGuard {
     private static final String ALLOWED_ORIGIN = "http://127.0.0.1:9527";
+    private static final String LOCALHOST_ORIGIN = "http://localhost:9527";
     private final String token;
 
     public SessionGuard(String token) {
@@ -16,7 +17,8 @@ public final class SessionGuard {
 
     public boolean allow(HttpExchange exchange, boolean allowMissingOrigin) throws IOException {
         String origin = exchange.getRequestHeaders().getFirst("Origin");
-        boolean originAllowed = ALLOWED_ORIGIN.equals(origin) || (allowMissingOrigin && origin == null);
+        boolean originAllowed = (ALLOWED_ORIGIN.equals(origin) || LOCALHOST_ORIGIN.equals(origin))
+                || (allowMissingOrigin && origin == null);
         String providedToken = exchange.getRequestHeaders().getFirst("X-DroidScope-Session");
         boolean tokenRequired = origin != null;
         if (!originAllowed || (tokenRequired && !tokenMatches(token, providedToken))) {
