@@ -1,4 +1,4 @@
-import type { CoreHealth, DeviceSummary, DroidScopeClient } from './DroidScopeClient'
+import type { CoreHealth, DeviceSummary, DroidScopeClient, WindowSnapshot } from './DroidScopeClient'
 
 export class HttpDroidScopeClient implements DroidScopeClient {
   private readonly token: string
@@ -19,6 +19,14 @@ export class HttpDroidScopeClient implements DroidScopeClient {
     })
     if (!response.ok) throw new Error(`DEVICE_LIST_FAILED:${response.status}`)
     return (await response.json()).devices
+  }
+
+  async getWindows(serial: string): Promise<WindowSnapshot> {
+    const response = await fetch(`/api/v1/windows?serial=${encodeURIComponent(serial)}`, {
+      headers: { 'X-DroidScope-Session': this.token },
+    })
+    if (!response.ok) throw new Error(`WINDOW_CAPTURE_FAILED:${response.status}`)
+    return response.json()
   }
 
   subscribeDevices(onDevices: (devices: DeviceSummary[]) => void): () => void {

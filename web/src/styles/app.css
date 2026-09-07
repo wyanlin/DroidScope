@@ -9,12 +9,26 @@ body {
 }
 
 .app-shell {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem;
   min-height: 100vh;
-  place-content: center;
+  align-items: stretch;
   gap: 0.5rem;
   background: var(--surface-base);
 }
+
+header { display: flex; align-items: baseline; gap: 1rem; }
+header span, small { color: var(--text-secondary); }
+.inspector { display: grid; grid-template-columns: minmax(28rem, 1fr) minmax(20rem, 30rem); gap: 1rem; min-height: 32rem; }
+.window-list, .window-detail { background: var(--surface-raised); border: 1px solid var(--border-default); border-radius: 8px; padding: 1rem; overflow: auto; }
+.window-list input { width: 100%; box-sizing: border-box; padding: .55rem; background: var(--surface-base); color: inherit; border: 1px solid var(--border-default); border-radius: 5px; }
+.window-row { display: grid; grid-template-columns: 1fr auto; gap: .25rem .75rem; width: 100%; text-align: left; padding: .65rem; color: inherit; background: transparent; border: 0; border-bottom: 1px solid var(--border-default); cursor: pointer; }
+.window-row span { color: var(--text-secondary); font-size: .8rem; }
+.window-row em { grid-column: 2; grid-row: 1 / span 2; color: var(--signal-success); font-style: normal; font-size: .75rem; }
+.window-row.selected { background: #164653; }
+.window-detail pre { white-space: pre-wrap; font: .75rem/1.5 ui-monospace, Consolas, monospace; max-height: 18rem; overflow: auto; }
+dt { color: var(--text-secondary); float: left; clear: left; width: 7rem; } dd { margin-left: 7rem; font-family: ui-monospace, Consolas, monospace; }
 
 h1,
 p {

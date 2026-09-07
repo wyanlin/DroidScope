@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { DeviceSummary, DroidScopeClient } from '../local-client/DroidScopeClient'
+import type { DeviceSummary, DroidScopeClient, WindowInfo } from '../local-client/DroidScopeClient'
 
 interface AppProps {
   client: DroidScopeClient
@@ -15,14 +15,24 @@ const stateLabel: Record<DeviceSummary['state'], string> = {
 export function App({ client }: AppProps) {
   const [devices, setDevices] = useState<DeviceSummary[] | null>(null)
   const [error, setError] = useState(false)
+  const [windows, setWindows] = useState<WindowInfo[] | null>(null)
+  const [selected, setSelected] = useState<WindowInfo | null>(null)
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     let active = true
     setError(false)
-    client.listDevices().then((nextDevices) => {
+    client.listDevices().then(async (nextDevices) => {
       if (!active) return
       setDevices(nextDevices)
       setError(false)
+      const ready = nextDevices.find((device) => device.ready)
+      if (ready) {
+        const snapshot = await client.getWindows(ready.serial)
+        if (active) setWindows(snapshot.windows)
+      } else if (active) {
+        setWindows([])
+      }
     }).catch(() => {
       if (active) setError(true)
     })
@@ -38,9 +48,14 @@ export function App({ client }: AppProps) {
     }
   }, [client])
 
+  const filteredWindows = windows?.filter((window) => {
+    const needle = query.trim().toLowerCase()
+    return !needle || [window.title, window.packageName ?? '', String(window.displayId)].some((value) => value.toLowerCase().includes(needle))
+  })
+
   return (
     <main className="app-shell">
-      <h1>DroidScope</h1>
+      <header><h1>DroidScope</h1><span>Window Inspector</span></header>
       {devices === null && !error && <p>Connecting to Local Core…</p>}
       {error && devices === null && <p>ADB is unavailable.</p>}
       {devices?.length === 0 && <p>No Android devices found.</p>}
@@ -49,6 +64,17 @@ export function App({ client }: AppProps) {
           {devices.map((device) => <li key={device.serial}>{device.serial} — {stateLabel[device.state]}</li>)}
         </ul>
       )}
+      {windows !== null && <section className="inspector">
+        <div className="window-list">
+          <input aria-label="Search windows" placeholder="Search windows" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <h2>Windows <small>{filteredWindows?.length ?? 0}</small></h2>
+          {filteredWindows?.map((window) => <button className={selected === window ? 'window-row selected' : 'window-row'} key={`${window.order}-${window.title}`} onClick={() => setSelected(window)}>
+            <strong>{window.title}</strong><span>{window.packageName ?? 'Unknown package'} · Display {window.displayId}</span><em>{window.focused ? '◆ FOCUSED' : window.visible ? '● VISIBLE' : '○ HIDDEN'}</em>
+          </button>)}
+          {filteredWindows?.length === 0 && <p>No matching windows.</p>}
+        </div>
+        <aside className="window-detail"><h2>Overview</h2>{selected ? <><h3>{selected.title}</h3><dl><dt>Package</dt><dd>{selected.packageName ?? '—'}</dd><dt>Display</dt><dd>{selected.displayId}</dd><dt>Focused</dt><dd>{String(selected.focused)}</dd><dt>Visible</dt><dd>{String(selected.visible)}</dd><dt>Has Surface</dt><dd>{String(selected.hasSurface)}</dd></dl><h2>Raw</h2><pre>{selected.rawBlock}</pre></> : <p>Select a window to inspect its details.</p>}</aside>
+      </section>}
     </main>
   )
 }
