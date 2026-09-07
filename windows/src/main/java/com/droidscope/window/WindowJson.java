@@ -14,6 +14,8 @@ public final class WindowJson {
                     .append(",\"title\":"); quote(json, window.title());
             json.append(",\"packageName\":"); quote(json, window.packageName());
             json.append(",\"displayId\":").append(window.displayId())
+                    .append(",\"pid\":").append(window.pid())
+                    .append(",\"uid\":").append(window.uid())
                     .append(",\"focused\":").append(window.focused())
                     .append(",\"visible\":").append(window.visible())
                     .append(",\"hasSurface\":").append(window.hasSurface())

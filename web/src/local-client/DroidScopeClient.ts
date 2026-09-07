@@ -17,6 +17,8 @@ export interface WindowInfo {
   title: string
   packageName: string | null
   displayId: number
+  pid: number
+  uid: number
   focused: boolean
   visible: boolean
   hasSurface: boolean

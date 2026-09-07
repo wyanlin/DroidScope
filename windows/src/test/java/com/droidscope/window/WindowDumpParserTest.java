@@ -8,7 +8,7 @@ public final class WindowDumpParserTest {
         String sample = "mCurrentFocus=Window{abc u0 com.sprd.engineermode/com.sprd.engineermode.EngineerModeActivity}-[Surface(name=*Title#1)/@0x1]\n"
                 + "  Window #0 Window{abc u0 com.sprd.engineer\n"
                 + "mode/com.sprd.engineermode.EngineerModeActivity}-[Surface(name=*Title#1)/@0x1]:\n"
-                + "    mDisplayId=0 rootTaskId=13\n"
+                + "    mDisplayId=0 rootTaskId=13 mSession=Session{abc 10796:1000}\n"
                 + "    mHasSurface=true isReadyForDisplay()=true\n";
         WindowSnapshot snapshot = new WindowDumpParser().parse(sample);
         assertEquals(1, snapshot.windows().size());
@@ -16,6 +16,8 @@ public final class WindowDumpParserTest {
         assertEquals("com.sprd.engineermode/com.sprd.engineermode.EngineerModeActivity", window.title());
         assertEquals("com.sprd.engineermode", window.packageName());
         assertEquals(0, window.displayId());
+        assertEquals(10796, window.pid());
+        assertEquals(1000, window.uid());
         assertTrue(window.focused(), "focused window should be detected");
         assertTrue(window.hasSurface(), "surface should be detected");
         assertTrue(window.visible(), "ready window should be visible");
