@@ -17,7 +17,7 @@ export class HttpDroidScopeClient implements DroidScopeClient {
     const response = await fetch('/api/v1/devices', {
       headers: { 'X-DroidScope-Session': this.token },
     })
-    if (!response.ok) throw new Error(`DEVICE_LIST_FAILED:${response.status}`)
+    if (!response.ok) throw new Error(`DEVICE_LIST_FAILED:${response.status}:${(await response.text()).trim()}`)
     return (await response.json()).devices
   }
 
@@ -25,7 +25,7 @@ export class HttpDroidScopeClient implements DroidScopeClient {
     const response = await fetch(`/api/v1/windows?serial=${encodeURIComponent(serial)}`, {
       headers: { 'X-DroidScope-Session': this.token },
     })
-    if (!response.ok) throw new Error(`WINDOW_CAPTURE_FAILED:${response.status}`)
+    if (!response.ok) throw new Error(`WINDOW_CAPTURE_FAILED:${response.status}:${(await response.text()).trim()}`)
     return response.json()
   }
 

@@ -14,14 +14,14 @@ const stateLabel: Record<DeviceSummary['state'], string> = {
 
 export function App({ client }: AppProps) {
   const [devices, setDevices] = useState<DeviceSummary[] | null>(null)
-  const [error, setError] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [windows, setWindows] = useState<WindowInfo[] | null>(null)
   const [selected, setSelected] = useState<WindowInfo | null>(null)
   const [query, setQuery] = useState('')
   const [selectedSerial, setSelectedSerial] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
-  const [windowError, setWindowError] = useState(false)
+  const [windowError, setWindowError] = useState<string | null>(null)
 
   const selectReadyDevice = (nextDevices: DeviceSummary[]) => {
     setSelectedSerial((current) => {
@@ -32,19 +32,19 @@ export function App({ client }: AppProps) {
 
   useEffect(() => {
     let active = true
-    setError(false)
+    setError(null)
     client.listDevices().then((nextDevices) => {
       if (!active) return
       setDevices(nextDevices)
-      setError(false)
+      setError(null)
       if (active) selectReadyDevice(nextDevices)
-    }).catch(() => {
-      if (active) setError(true)
+    }).catch((requestError: Error) => {
+      if (active) setError(requestError.message)
     })
     const unsubscribe = client.subscribeDevices((nextDevices) => {
       if (active) {
         setDevices(nextDevices)
-        setError(false)
+        setError(null)
         selectReadyDevice(nextDevices)
       }
     })
@@ -58,11 +58,11 @@ export function App({ client }: AppProps) {
     if (!selectedSerial) { setWindows([]); setSelected(null); return }
     let active = true
     setRefreshing(true)
-    setWindowError(false)
+    setWindowError(null)
     setWindows(null)
     client.getWindows(selectedSerial).then((snapshot) => {
       if (active) { setWindows(snapshot.windows); setSelected(null); setRefreshing(false) }
-    }).catch(() => { if (active) { setWindows([]); setWindowError(true); setRefreshing(false) } })
+    }).catch((requestError: Error) => { if (active) { setWindows([]); setWindowError(requestError.message); setRefreshing(false) } })
     return () => { active = false }
   }, [client, selectedSerial, refreshKey])
 
@@ -75,9 +75,9 @@ export function App({ client }: AppProps) {
     <main className="app-shell">
       <header><h1>DroidScope</h1><span>Window Inspector</span></header>
       {devices === null && !error && <p>Connecting to Local Core…</p>}
-      {error && devices === null && <p>ADB is unavailable.</p>}
+      {error && devices === null && <p>Local Core request failed: {error}</p>}
       {devices?.length === 0 && <p>No Android devices found.</p>}
-      {devices && devices.length > 0 && <div className="device-bar"><label>Device <select value={selectedSerial ?? ''} onChange={(event) => setSelectedSerial(event.target.value || null)}>{devices.map((device) => <option key={device.serial} value={device.serial}>{device.serial} — {stateLabel[device.state]}</option>)}</select></label><button className="refresh-button" onClick={() => setRefreshKey((value) => value + 1)} disabled={!selectedSerial || refreshing}>{refreshing ? 'Refreshing…' : 'Refresh Snapshot'}</button>{windowError && <span className="window-error">Window capture failed</span>}</div>}
+      {devices && devices.length > 0 && <div className="device-bar"><label>Device <select value={selectedSerial ?? ''} onChange={(event) => setSelectedSerial(event.target.value || null)}>{devices.map((device) => <option key={device.serial} value={device.serial}>{device.serial} — {stateLabel[device.state]}</option>)}</select></label><button className="refresh-button" onClick={() => setRefreshKey((value) => value + 1)} disabled={!selectedSerial || refreshing}>{refreshing ? 'Refreshing…' : 'Refresh Snapshot'}</button>{windowError && <span className="window-error">Window capture failed: {windowError}</span>}</div>}
       {windows !== null && <section className="inspector">
         <div className="window-list">
           <input aria-label="Search windows" placeholder="Search windows" value={query} onChange={(event) => setQuery(event.target.value)} />

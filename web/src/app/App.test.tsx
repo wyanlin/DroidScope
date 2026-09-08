@@ -47,7 +47,7 @@ describe('App', () => {
       getWindows: async () => ({ focusedTarget: null, windows: [] }),
     }
     render(<App client={client} />)
-    expect(await screen.findByText('ADB is unavailable.')).toBeInTheDocument()
+    expect(await screen.findByText('Local Core request failed: DEVICE_LIST_FAILED:503')).toBeInTheDocument()
   })
 
   it('clears a previous ADB error after a later successful load', async () => {
@@ -58,11 +58,11 @@ describe('App', () => {
       getWindows: async () => ({ focusedTarget: null, windows: [] }),
     }
     const { rerender } = render(<App client={failingClient} />)
-    expect(await screen.findByText('ADB is unavailable.')).toBeInTheDocument()
+    expect(await screen.findByText('Local Core request failed: DEVICE_LIST_FAILED:503')).toBeInTheDocument()
 
     rerender(<App client={clientFor([{ serial: 'READY', state: 'device', ready: true }])} />)
     expect(await screen.findByText('READY — Ready')).toBeInTheDocument()
-    expect(screen.queryByText('ADB is unavailable.')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Local Core request failed/)).not.toBeInTheDocument()
   })
 
   it('refreshes the selected device snapshot', async () => {

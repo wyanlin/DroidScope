@@ -28,7 +28,8 @@ public final class WindowHandler {
         try {
             respond(exchange, 200, WindowJson.encode(parser.parse(dumpProvider.apply(serial))));
         } catch (Exception error) {
-            respond(exchange, 502, "{\"error\":\"WINDOW_CAPTURE_FAILED\"}\n");
+            String detail = error.getCause() == null ? error.getMessage() : error.getCause().getMessage();
+            respond(exchange, 502, "{\"error\":\"WINDOW_CAPTURE_FAILED\",\"detail\":\"" + escape(detail) + "\"}\n");
         }
     }
 
@@ -46,5 +47,9 @@ public final class WindowHandler {
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
         exchange.sendResponseHeaders(status, bytes.length);
         try (var output = exchange.getResponseBody()) { output.write(bytes); }
+    }
+
+    private static String escape(String value) {
+        return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
     }
 }

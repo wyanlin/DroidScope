@@ -24,7 +24,8 @@ public final class SessionGuardTest {
             assertStatus(base, "/api/v1/devices", "wrong-token", "http://127.0.0.1:9527", 403);
             assertStatus(base, "/api/v1/devices", "expected-token", "https://example.test", 403);
             assertStatus(base, "/api/v1/devices", "expected-token", "null", 403);
-            assertStatus(base, "/api/v1/devices", "expected-token", null, 403);
+            assertStatus(base, "/api/v1/devices", "expected-token", null, 204);
+            assertStatus(base, "/api/v1/devices", null, null, 403);
             assertStatus(base, "/api/v1/health", null, null, 204);
         } finally {
             server.stop(0);

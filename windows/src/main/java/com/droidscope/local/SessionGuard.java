@@ -17,12 +17,15 @@ public final class SessionGuard {
 
     public boolean allow(HttpExchange exchange, boolean allowMissingOrigin) throws IOException {
         String origin = exchange.getRequestHeaders().getFirst("Origin");
-        boolean originAllowed = (ALLOWED_ORIGIN.equals(origin) || LOCALHOST_ORIGIN.equals(origin))
-                || (allowMissingOrigin && origin == null);
+        boolean originAllowed = ALLOWED_ORIGIN.equals(origin) || LOCALHOST_ORIGIN.equals(origin) || origin == null;
         String providedToken = exchange.getRequestHeaders().getFirst("X-DroidScope-Session");
-        boolean tokenRequired = origin != null;
-        if (!originAllowed || (tokenRequired && !tokenMatches(token, providedToken))) {
-            reject(exchange);
+        boolean tokenRequired = !allowMissingOrigin || origin != null;
+        if (!originAllowed) {
+            reject(exchange, "origin");
+            return false;
+        }
+        if (tokenRequired && !tokenMatches(token, providedToken)) {
+            reject(exchange, "session");
             return false;
         }
         addSecurityHeaders(exchange);
@@ -43,8 +46,8 @@ public final class SessionGuard {
         exchange.getResponseHeaders().set("Referrer-Policy", "no-referrer");
     }
 
-    private static void reject(HttpExchange exchange) throws IOException {
-        byte[] body = "forbidden\n".getBytes(StandardCharsets.UTF_8);
+    private static void reject(HttpExchange exchange, String reason) throws IOException {
+        byte[] body = ("forbidden:" + reason + "\n").getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
         exchange.sendResponseHeaders(403, body.length);
         try (var output = exchange.getResponseBody()) {
