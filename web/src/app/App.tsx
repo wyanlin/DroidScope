@@ -5,6 +5,8 @@ interface AppProps {
   client: DroidScopeClient
 }
 
+type VisibilityFilter = 'all' | 'visible' | 'hidden'
+
 const stateLabel: Record<DeviceSummary['state'], string> = {
   device: 'Ready',
   unauthorized: 'Unauthorized',
@@ -22,6 +24,7 @@ export function App({ client }: AppProps) {
   const [refreshKey, setRefreshKey] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
   const [windowError, setWindowError] = useState<string | null>(null)
+  const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilter>('all')
 
   const selectReadyDevice = (nextDevices: DeviceSummary[]) => {
     setSelectedSerial((current) => {
@@ -68,7 +71,11 @@ export function App({ client }: AppProps) {
 
   const filteredWindows = windows?.filter((window) => {
     const needle = query.trim().toLowerCase()
-    return !needle || [window.title, window.packageName ?? '', String(window.displayId)].some((value) => value.toLowerCase().includes(needle))
+    const matchesSearch = !needle || [window.title, window.packageName ?? '', String(window.displayId)].some((value) => value.toLowerCase().includes(needle))
+    const matchesVisibility = visibilityFilter === 'all'
+      || (visibilityFilter === 'visible' && window.visible)
+      || (visibilityFilter === 'hidden' && !window.visible)
+    return matchesSearch && matchesVisibility
   })
 
   return (
@@ -81,9 +88,14 @@ export function App({ client }: AppProps) {
       {windows !== null && <section className="inspector">
         <div className="window-list">
           <input aria-label="Search windows" placeholder="Search windows" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <div className="visibility-filter" aria-label="Window visibility filter">
+            <button className={visibilityFilter === 'all' ? 'active' : ''} onClick={() => setVisibilityFilter('all')}>All</button>
+            <button className={visibilityFilter === 'visible' ? 'active' : ''} onClick={() => setVisibilityFilter('visible')}>Visible</button>
+            <button className={visibilityFilter === 'hidden' ? 'active' : ''} onClick={() => setVisibilityFilter('hidden')}>Hidden</button>
+          </div>
           <h2>Windows <small>{filteredWindows?.length ?? 0}</small></h2>
           {filteredWindows?.map((window) => <button className={selected === window ? 'window-row selected' : 'window-row'} key={`${window.order}-${window.title}`} onClick={() => setSelected(window)}>
-            <strong>{window.title}</strong><span>{window.packageName ?? 'Unknown package'} · Display {window.displayId}</span><em>{window.focused ? '◆ FOCUSED' : window.visible ? '● VISIBLE' : '○ HIDDEN'}</em>
+            <strong>{window.title}</strong><span>{window.packageName ?? 'Unknown package'} · Display {window.displayId}</span><em className={window.focused ? 'state-focused' : window.visible ? 'state-visible' : 'state-hidden'}>{window.focused ? '◆ FOCUSED' : window.visible ? '● VISIBLE' : '○ HIDDEN'}</em>
           </button>)}
           {filteredWindows?.length === 0 && <p>No matching windows.</p>}
         </div>

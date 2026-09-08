@@ -89,4 +89,26 @@ describe('App', () => {
     publish?.([{ serial: 'READY', state: 'device', ready: true }])
     expect(await screen.findByRole('button', { name: 'Refresh Snapshot' })).toBeEnabled()
   })
+
+  it('distinguishes window states and filters visible and hidden windows', async () => {
+    const client = clientFor([{ serial: 'READY', state: 'device', ready: true }])
+    client.getWindows = async () => ({ focusedTarget: 'focused', windows: [
+      { order: 0, title: 'focused', packageName: null, displayId: 0, pid: -1, uid: -1, focused: true, visible: true, hasSurface: true, rawBlock: '' },
+      { order: 1, title: 'visible', packageName: null, displayId: 0, pid: -1, uid: -1, focused: false, visible: true, hasSurface: true, rawBlock: '' },
+      { order: 2, title: 'hidden', packageName: null, displayId: 0, pid: -1, uid: -1, focused: false, visible: false, hasSurface: false, rawBlock: '' },
+    ] })
+    render(<App client={client} />)
+
+    expect(await screen.findByText('◆ FOCUSED')).toHaveClass('state-focused')
+    expect(screen.getByText('● VISIBLE')).toHaveClass('state-visible')
+    expect(screen.getByText('○ HIDDEN')).toHaveClass('state-hidden')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Visible' }))
+    expect(screen.getByRole('button', { name: /visible/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /hidden/ })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hidden' }))
+    expect(screen.getByRole('button', { name: /hidden/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /visible/ })).not.toBeInTheDocument()
+  })
 })

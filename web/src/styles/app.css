@@ -30,9 +30,15 @@ header span, small { color: var(--text-secondary); }
 .inspector { display: grid; grid-template-columns: minmax(28rem, 1fr) minmax(20rem, 30rem); gap: 1rem; min-height: 32rem; }
 .window-list, .window-detail { background: var(--surface-raised); border: 1px solid var(--border-default); border-radius: 8px; padding: 1rem; overflow: auto; }
 .window-list input { width: 100%; box-sizing: border-box; padding: .55rem; background: var(--surface-base); color: inherit; border: 1px solid var(--border-default); border-radius: 5px; }
+.visibility-filter { display: flex; gap: .5rem; margin-top: .75rem; }
+.visibility-filter button { padding: .35rem .6rem; color: inherit; background: var(--surface-base); border: 1px solid var(--border-default); border-radius: 5px; cursor: pointer; }
+.visibility-filter button.active { border-color: var(--signal-focus); color: var(--signal-focus); }
 .window-row { display: grid; grid-template-columns: 1fr auto; gap: .25rem .75rem; width: 100%; text-align: left; padding: .65rem; color: inherit; background: transparent; border: 0; border-bottom: 1px solid var(--border-default); cursor: pointer; }
 .window-row span { color: var(--text-secondary); font-size: .8rem; }
-.window-row em { grid-column: 2; grid-row: 1 / span 2; color: var(--signal-success); font-style: normal; font-size: .75rem; }
+.window-row em { grid-column: 2; grid-row: 1 / span 2; font-style: normal; font-size: .75rem; }
+.state-focused { color: var(--signal-focus); }
+.state-visible { color: var(--signal-success); }
+.state-hidden { color: var(--text-secondary); }
 .window-row.selected { background: #164653; }
 .window-detail pre { white-space: pre-wrap; font: .75rem/1.5 ui-monospace, Consolas, monospace; max-height: 18rem; overflow: auto; }
 dt { color: var(--text-secondary); float: left; clear: left; width: 7rem; } dd { margin-left: 7rem; font-family: ui-monospace, Consolas, monospace; }
