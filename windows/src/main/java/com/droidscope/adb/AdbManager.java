@@ -62,6 +62,14 @@ public final class AdbManager {
         return result.output();
     }
 
+    public String dumpActivities(String serial) throws IOException, InterruptedException {
+        CommandResult result = run("-s", serial, "shell", "dumpsys", "activity", "activities");
+        if (result.exitCode() != 0) {
+            throw new IOException("dumpsys activity activities failed: " + result.output());
+        }
+        return result.output();
+    }
+
     private CommandResult run(String... args) throws IOException, InterruptedException {
         List<String> command = new ArrayList<>();
         command.add(adbPath);
