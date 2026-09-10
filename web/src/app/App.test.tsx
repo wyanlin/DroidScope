@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { App } from './App'
-import type { ActivityWindowSnapshot, DroidScopeClient } from '../local-client/DroidScopeClient'
+import type { ActivityWindowSnapshot, DroidScopeClient, InspectorSnapshot } from '../local-client/DroidScopeClient'
 
 const emptySnapshot = (): ActivityWindowSnapshot => ({ capturedAtEpochMs: 0, windows: [], activities: [] })
 
@@ -109,6 +109,36 @@ describe('App', () => {
     await waitFor(() => expect(publish).toBeDefined())
     publish?.([{ serial: 'READY', state: 'device', ready: true }])
     expect(await screen.findByRole('button', { name: 'Refresh Snapshot' })).toBeEnabled()
+  })
+
+  it('retains the selected device and snapshot when the device disconnects', async () => {
+    let publish: ((devices: Awaited<ReturnType<DroidScopeClient['listDevices']>>) => void) | undefined
+    const client = clientFor([{ serial: 'READY', state: 'device', ready: true }])
+    client.getInspectorSnapshot = async () => ({ ...emptySnapshot(), serial: 'READY', surfaces: [], relations: { surfaceWindow: [] } })
+    client.subscribeDevices = (onDevices) => { publish = onDevices; return () => {} }
+    render(<App client={client} />)
+
+    expect(await screen.findByText('Windows')).toBeInTheDocument()
+    expect(await screen.findByText('READY — Ready')).toBeInTheDocument()
+    publish?.([])
+
+    expect(await screen.findByText('No Android devices found.')).toBeInTheDocument()
+    expect(screen.getByText('Windows')).toBeInTheDocument()
+    expect(screen.getByText('Device disconnected; showing the last successful snapshot.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refresh Devices' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Refresh Snapshot' })).toBeDisabled()
+  })
+
+  it('manually refreshes the device connection list', async () => {
+    let calls = 0
+    const client = clientFor([])
+    client.listDevices = async () => { calls += 1; return calls === 1 ? [] : [{ serial: 'READY', state: 'device', ready: true }] }
+    render(<App client={client} />)
+
+    expect(await screen.findByText('No Android devices found.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh Devices' }))
+    expect(await screen.findByText('READY — Ready')).toBeInTheDocument()
+    expect(calls).toBe(2)
   })
 
   it('distinguishes window states and filters visible and hidden windows', async () => {
@@ -266,5 +296,59 @@ describe('App', () => {
     fireEvent.pointerMove(window, { clientX: 600 })
     fireEvent.pointerUp(window)
     expect(Number(separator.getAttribute('aria-valuenow'))).toBeGreaterThan(42)
+  })
+
+  it('renders the Surface inspector tree, filters, overview, and Window navigation', async () => {
+    const client = clientFor([{ serial: 'READY', state: 'device', ready: true }])
+    client.getInspectorSnapshot = async (): Promise<InspectorSnapshot> => ({
+      capturedAtEpochMs: 1, serial: 'READY', windows: [{
+        id: 'window:0', order: 0, title: 'com.demo/com.demo.MainActivity', packageName: 'com.demo',
+        componentName: 'com.demo/com.demo.MainActivity', userId: 0, displayId: 0, pid: 1234, uid: 1000,
+        windowType: 1, focused: true, visible: true, hasSurface: true, relatedActivityId: null, rawBlock: 'window',
+      }], activities: [], surfaces: [
+        { id: 10, name: 'WindowContainer#10', canonicalName: 'WindowContainer', type: 'Layer', parentId: -1, childIds: [11], layerStack: 0, z: 1, bounds: null, screenBounds: null, hasBuffer: false, activeBuffer: null, currentFrame: null, inputWindowInfo: null, metadata: {}, relationKind: 'UNLINKED', relatedWindowId: null },
+        { id: 11, name: 'com.demo/com.demo.MainActivity#11', canonicalName: 'com.demo/com.demo.MainActivity', type: 'Layer', parentId: 10, childIds: [], layerStack: 0, z: 2, bounds: { left: 0, top: 0, right: 1080, bottom: 2400 }, screenBounds: { left: 0, top: 0, right: 1080, bottom: 2400 }, hasBuffer: true, activeBuffer: { width: 1080, height: 2400, stride: 1080, format: 1 }, currentFrame: 7, inputWindowInfo: { layoutParamsType: 1, frame: [0, 0, 1080, 2400] }, metadata: { '1': '1000', '2': '1', '6': '1234' }, relationKind: 'EXACT_METADATA', relatedWindowId: 'window:0' },
+      ], relations: { surfaceWindow: [{ windowId: 'window:0', surfaceId: 11, kind: 'EXACT_METADATA', candidateCount: 1 }] },
+    })
+    render(<App client={client} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Surfaces page' }))
+    expect(screen.getByRole('heading', { name: 'Surfaces' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /WindowContainer#10/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /com.demo\/com.demo.MainActivity#11/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /com.demo\/com.demo.MainActivity#11/ }))
+    expect(screen.getByText('1000', { selector: '.property-value' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Window: window:0' })).toHaveClass('relationship-link')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Has Buffer' }))
+    expect(screen.getByRole('button', { name: /MainActivity#11/ })).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search surfaces' }), { target: { value: '11' } })
+    expect(screen.getByRole('button', { name: /MainActivity#11/ })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Window: window:0' }))
+    expect(screen.getByRole('heading', { name: 'Windows' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Surface: 11' })).toHaveClass('relationship-link')
+    fireEvent.click(screen.getByRole('button', { name: 'Surface: 11' }))
+    expect(screen.getByRole('heading', { name: 'Surfaces' })).toBeInTheDocument()
+  })
+
+  it('retains the last InspectorSnapshot when a refresh fails', async () => {
+    const client = clientFor([{ serial: 'READY', state: 'device', ready: true }])
+    let calls = 0
+    client.getInspectorSnapshot = async (): Promise<InspectorSnapshot> => {
+      calls += 1
+      if (calls > 1) throw new Error('SURFACE_CAPTURE_FAILED')
+      return {
+        capturedAtEpochMs: 1, serial: 'READY', windows: [], activities: [],
+        surfaces: [{ id: 11, name: 'Main#11', canonicalName: 'Main', type: 'Layer', parentId: null, childIds: [], layerStack: 0, z: 1, bounds: null, screenBounds: null, hasBuffer: false, activeBuffer: null, currentFrame: null, inputWindowInfo: null, metadata: {}, relationKind: 'UNLINKED', relatedWindowId: null }],
+        relations: { surfaceWindow: [] },
+      }
+    }
+    render(<App client={client} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Surfaces page' }))
+    expect(await screen.findByRole('button', { name: /Main#11/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh Snapshot' }))
+    expect(await screen.findByText('Snapshot capture failed: SURFACE_CAPTURE_FAILED')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Main#11/ })).toBeInTheDocument()
   })
 })
