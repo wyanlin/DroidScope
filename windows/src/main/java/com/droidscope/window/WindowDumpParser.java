@@ -12,6 +12,7 @@ public final class WindowDumpParser {
     private static final Pattern HEADER = Pattern.compile("(?s)^\\s*Window #(\\d+)\\s+Window\\{[^ ]+\\s+u\\d+\\s+(.+?)}(?:-|\\*|:|$)");
     private static final Pattern DISPLAY = Pattern.compile("mDisplayId=(\\d+)");
     private static final Pattern SESSION = Pattern.compile("mSession=Session\\{[^ ]+\\s+(\\d+):(\\d+)");
+    private static final Pattern USER_COMPONENT = Pattern.compile("Window\\{[^ ]+\\s+u(\\d+)\\s+([^}]+)}");
 
     public WindowSnapshot parse(String dump) {
         String focusedTarget = focusTarget(dump);
@@ -23,6 +24,10 @@ public final class WindowDumpParser {
             if (!header.find()) continue;
             int order = Integer.parseInt(header.group(1));
             String title = compact(header.group(2));
+            Matcher identity = USER_COMPONENT.matcher(raw);
+            boolean hasIdentity = identity.find();
+            int userId = hasIdentity ? Integer.parseInt(identity.group(1)) : -1;
+            String componentName = hasIdentity ? compact(identity.group(2)) : null;
             int displayId = findInt(DISPLAY, raw, 0);
             Matcher session = SESSION.matcher(raw);
             int pid = session.find() ? Integer.parseInt(session.group(1)) : -1;
@@ -32,7 +37,8 @@ public final class WindowDumpParser {
             boolean visible = hasSurface && raw.contains("isReadyForDisplay()=true");
             String packageName = packageName(title);
             boolean focused = focusedTarget != null && (focusedTarget.equals(title) || focusedTarget.startsWith(title + "-"));
-            windows.add(new WindowInfo(order, title, packageName, displayId, pid, uid, focused, visible, hasSurface, raw));
+            windows.add(new WindowInfo(order, title, packageName, userId, componentName, displayId, pid, uid,
+                    focused, visible, hasSurface, raw, null));
         }
         return new WindowSnapshot(windows, focusedTarget);
     }
