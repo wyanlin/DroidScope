@@ -149,18 +149,22 @@ describe('App', () => {
 
   it('groups Window Overview properties and marks its activity relationship', async () => {
     const client = clientFor([{ serial: 'READY', state: 'device', ready: true }])
-    client.getActivityWindowSnapshot = async () => linkedSnapshot()
+    const longComponentName = 'com.example.very.long.package.name/.VeryLongActivityComponentName'
+    const snapshot = linkedSnapshot()
+    snapshot.windows[0].componentName = longComponentName
+    snapshot.activities[0].componentName = longComponentName
+    client.getActivityWindowSnapshot = async () => snapshot
     render(<App client={client} />)
 
     expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument()
     const identity = within(screen.getByRole('heading', { name: 'Identity' }).closest('.property-group') as HTMLElement)
     const runtime = within(screen.getByRole('heading', { name: 'Runtime' }).closest('.property-group') as HTMLElement)
-    const windowState = within(screen.getByRole('heading', { name: 'Window State' }).closest('.property-group') as HTMLElement)
+    const windowState = within((await screen.findByRole('heading', { name: 'Window State' })).closest('.property-group') as HTMLElement)
     const relationship = within(screen.getByRole('heading', { name: 'Relationship' }).closest('.property-group') as HTMLElement)
     expect(identity.getByText('Package')).toBeInTheDocument()
     expect(identity.getByText('com.demo', { selector: '.property-value' })).toBeInTheDocument()
     expect(identity.getByText('Component')).toBeInTheDocument()
-    expect(identity.getByText('com.demo/.MainActivity', { selector: '.property-value' })).toBeInTheDocument()
+    expect(identity.getByText(longComponentName, { selector: '.property-value' })).toHaveClass('property-value')
     expect(identity.getByText('User')).toBeInTheDocument()
     expect(identity.getByText('10', { selector: '.property-value' })).toBeInTheDocument()
     expect(runtime.getByText('PID')).toBeInTheDocument()
@@ -169,11 +173,13 @@ describe('App', () => {
     expect(runtime.getByText('1000', { selector: '.property-value' })).toBeInTheDocument()
     expect(runtime.getByText('Display')).toBeInTheDocument()
     expect(runtime.getByText('2', { selector: '.property-value' })).toBeInTheDocument()
-    expect(windowState.getByText('Focused')).toBeInTheDocument()
-    expect(windowState.getByText('true', { selector: '.property-value' })).toBeInTheDocument()
-    expect(windowState.getByText('Visible')).toBeInTheDocument()
-    expect(windowState.getByText('Has Surface')).toBeInTheDocument()
-    expect(relationship.getByRole('button', { name: 'Activity: com.demo/.MainActivity' })).toHaveClass('relationship-link')
+    const focusedRow = windowState.getByText('Focused').closest('.property-row') as HTMLElement
+    const visibleRow = windowState.getByText('Visible').closest('.property-row') as HTMLElement
+    const surfaceRow = windowState.getByText('Has Surface').closest('.property-row') as HTMLElement
+    expect(within(focusedRow).getByText('true', { selector: '.property-value' })).toHaveClass('value-focus')
+    expect(within(visibleRow).getByText('true', { selector: '.property-value' })).toHaveClass('value-active')
+    expect(within(surfaceRow).getByText('true', { selector: '.property-value' })).toHaveClass('value-active')
+    expect(relationship.getByRole('button', { name: `Activity: ${longComponentName}` })).toHaveClass('relationship-link')
   })
 
   it('groups Activity Overview properties and marks resumed and window relationships', async () => {
@@ -217,6 +223,35 @@ describe('App', () => {
 
     expect(await screen.findByRole('button', { name: /SurfaceView/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Activity:/ })).not.toBeInTheDocument()
+  })
+
+  it('marks inactive Window State and Activity values as muted', async () => {
+    const client = clientFor([{ serial: 'READY', state: 'device', ready: true }])
+    client.getActivityWindowSnapshot = async () => ({
+      capturedAtEpochMs: 1,
+      windows: [{
+        id: 'window:0', order: 0, title: 'HiddenWindow', packageName: 'com.demo',
+        componentName: 'com.demo/.HiddenActivity', userId: 0, displayId: 0, pid: 1234, uid: 1000,
+        focused: false, visible: false, hasSurface: false, relatedActivityId: null, rawBlock: 'window',
+      }],
+      activities: [{
+        id: 'u0:com.demo/.HiddenActivity', userId: 0, packageName: 'com.demo',
+        componentName: 'com.demo/.HiddenActivity', pid: 1234, state: 'PAUSED',
+        relatedWindowIds: [], rawBlock: 'activity',
+      }],
+    })
+    render(<App client={client} />)
+
+    const windowState = within((await screen.findByRole('heading', { name: 'Window State' })).closest('.property-group') as HTMLElement)
+    const focusedRow = within(windowState.getByText('Focused').closest('.property-row') as HTMLElement)
+    const visibleRow = within(windowState.getByText('Visible').closest('.property-row') as HTMLElement)
+    const surfaceRow = within(windowState.getByText('Has Surface').closest('.property-row') as HTMLElement)
+    expect(focusedRow.getByText('false', { selector: '.property-value' })).toHaveClass('value-muted')
+    expect(visibleRow.getByText('false', { selector: '.property-value' })).toHaveClass('value-muted')
+    expect(surfaceRow.getByText('false', { selector: '.property-value' })).toHaveClass('value-muted')
+    fireEvent.click(await screen.findByRole('button', { name: 'Activities page' }))
+    const runtime = within(screen.getByRole('heading', { name: 'Runtime' }).closest('.property-group') as HTMLElement)
+    expect(runtime.getByText('PAUSED', { selector: '.property-value' })).toHaveClass('value-muted')
   })
 
   it('provides an adjustable inspector separator', async () => {
