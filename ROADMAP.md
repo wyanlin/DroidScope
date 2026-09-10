@@ -2,11 +2,11 @@
 
 ## 当前阶段
 
-当前 `master` 已合并 `codex/local-web-foundation`，本地 Web Workbench、USB／ADB 设备检测、`dumpsys window` 采集解析和 Window Inspector V0.1 已实现并完成用户验收。Activity ↔ Window 关联及 Overview 紧凑属性表也已完成。Surface ↔ Window V0.1 已在 `codex/surface-window` 完成实现、测试、打包和 Android 14 真机验收，待合并入 `master`。
+当前 `master` 已合并 `codex/local-web-foundation` 和 `codex/surface-window`。本地 Web Workbench、USB／ADB 设备检测、`dumpsys window` 采集解析、Window Inspector V0.1、Activity ↔ Window 及 Surface ↔ Window V0.1 均已实现并完成用户验收。
 
 后续产品方向已确认：先完成 DroidScope，再逐步接入常用开发工具；PC 端采用跨平台、本地优先的 Web Workbench，由 Java Local Core 仅在 `127.0.0.1` 提供本地页面和受限 interface，启动后默认打开系统浏览器，断网状态仍可使用。Local-first Web Foundation 和 Window Inspector V0.1 已完成，后续按 Window、Activity、Surface、Input 等关联能力逐步扩展。
 
-代码保存状态：`codex/local-web-foundation` 已通过合并提交 `952a10c` 合入 `master`。Surface ↔ Window 实现位于提交 `9cd28dd`，当前 `master` 尚未合并该提交。
+代码保存状态：`codex/local-web-foundation` 已通过合并提交 `952a10c` 合入 `master`。Surface ↔ Window 功能提交为 `9cd28dd`，已通过合并提交合入 `master`。
 
 ## 已完成
 
@@ -17,7 +17,7 @@
 - 2026-09-10：Local-first Web Foundation 和 Window Inspector V0.1 已合入 `master`，包含本地 Web UI、Local Core、USB／ADB 设备状态、SSE、Window Parser、Window Snapshot 和可见性筛选。
 - 2026-09-10：用户已验收最新 Windows Web UI 版本，确认 USB 检测和 Window Inspector 功能正常。
 - 2026-09-10：Activity ↔ Window 关联及 Overview 紧凑属性表已合入 `master`，Web UI 单测 19 项通过，Vite 生产构建通过；Window 与 Activity 页面均支持关联跳转、长 Component 换行和可调整左右面板比例。
-- 2026-09-10：`codex/surface-window` 完成 SurfaceFlinger binary proto 采集解析、`EXACT_METADATA` 严格关联、Surface Inspector、Window ↔ Surface 双向跳转和断线快照保留；提交 `9cd28dd`。
+- 2026-09-10：`codex/surface-window` 完成并合入 `master`，包含 SurfaceFlinger binary proto 采集解析、`EXACT_METADATA` 严格关联、Surface Inspector、Window ↔ Surface 双向跳转和断线快照保留；功能提交 `9cd28dd`。
 
 ## 进行中
 
@@ -25,9 +25,9 @@
 
 ## 待办
 
-- 第一优先级：将已完成的 `codex/surface-window` 合入 `master`。
+- 第一优先级：设计并实现 Input ↔ Window 关联。
 - 补齐 Android 11、13、14、15 的真实 `dumpsys window` fixture 验证；当前 Parser 已有 Android 13／14 相关实现，其他版本覆盖情况待实机确认。
-- Surface ↔ Window 合入 `master` 后，下一步推进 Input ↔ Window、Activity／Process Inspector、Binder、Perfetto 与 Diagnose。Perfetto 使用固定版本的本地静态包，运行时不依赖 `ui.perfetto.dev`。
+- Surface ↔ Window 已合入 `master`，下一步推进 Input ↔ Window、Activity／Process Inspector、Binder、Perfetto 与 Diagnose。Perfetto 使用固定版本的本地静态包，运行时不依赖 `ui.perfetto.dev`。
 - DroidScope 核心稳定后再评估 WangBox 工具接入；优先复用高契合的本地工具，同时保留独立离线使用方式，不在当前阶段迁移。
 - Android 文件发送页仍可作为独立体验优化项：文件列表、当前文件／总体进度、成功／失败展示、取消／重试按钮统一样式。
 - V1.2 范围候选依据 DESIGN.md 第二阶段：Windows 开机启动、接收目录设置、接收通知、Android 多文件总体进度、历史记录与 Debug 页面；尚未作为已完成事项或正式实施计划。
