@@ -15,6 +15,8 @@ public final class WindowDumpParserTest {
         WindowInfo window = snapshot.windows().get(0);
         assertEquals("com.sprd.engineermode/com.sprd.engineermode.EngineerModeActivity", window.title());
         assertEquals("com.sprd.engineermode", window.packageName());
+        assertEquals(0, window.userId());
+        assertEquals("com.sprd.engineermode/com.sprd.engineermode.EngineerModeActivity", window.componentName());
         assertEquals(0, window.displayId());
         assertEquals(10796, window.pid());
         assertEquals(1000, window.uid());

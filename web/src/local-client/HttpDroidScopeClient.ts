@@ -1,4 +1,4 @@
-import type { CoreHealth, DeviceSummary, DroidScopeClient, WindowSnapshot } from './DroidScopeClient'
+import type { ActivityWindowSnapshot, CoreHealth, DeviceSummary, DroidScopeClient, WindowSnapshot } from './DroidScopeClient'
 
 export class HttpDroidScopeClient implements DroidScopeClient {
   private readonly token: string
@@ -26,6 +26,14 @@ export class HttpDroidScopeClient implements DroidScopeClient {
       headers: { 'X-DroidScope-Session': this.token },
     })
     if (!response.ok) throw new Error(`WINDOW_CAPTURE_FAILED:${response.status}:${(await response.text()).trim()}`)
+    return response.json()
+  }
+
+  async getActivityWindowSnapshot(serial: string): Promise<ActivityWindowSnapshot> {
+    const response = await fetch(`/api/v1/activity-window-snapshot?serial=${encodeURIComponent(serial)}`, {
+      headers: { 'X-DroidScope-Session': this.token },
+    })
+    if (!response.ok) throw new Error(`ACTIVITY_WINDOW_CAPTURE_FAILED:${response.status}:${(await response.text()).trim()}`)
     return response.json()
   }
 

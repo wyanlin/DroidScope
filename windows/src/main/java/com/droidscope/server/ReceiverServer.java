@@ -8,6 +8,7 @@ import com.droidscope.local.EventTicketHandler;
 import com.droidscope.local.EventTicketStore;
 import com.droidscope.local.SessionGuard;
 import com.droidscope.local.StaticAssetHandler;
+import com.droidscope.activity.ActivityWindowHandler;
 import com.droidscope.window.WindowHandler;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -43,6 +44,21 @@ public final class ReceiverServer implements AutoCloseable {
             if (guard.allow(exchange, false)) new WindowHandler(serial -> {
                 try {
                     return adbManager.dumpWindows(serial);
+                } catch (IOException | InterruptedException error) {
+                    throw new RuntimeException(error);
+                }
+            }).handle(exchange);
+        });
+        server.createContext("/api/v1/activity-window-snapshot", exchange -> {
+            if (guard.allow(exchange, false)) new ActivityWindowHandler(serial -> {
+                try {
+                    return adbManager.dumpWindows(serial);
+                } catch (IOException | InterruptedException error) {
+                    throw new RuntimeException(error);
+                }
+            }, serial -> {
+                try {
+                    return adbManager.dumpActivities(serial);
                 } catch (IOException | InterruptedException error) {
                     throw new RuntimeException(error);
                 }

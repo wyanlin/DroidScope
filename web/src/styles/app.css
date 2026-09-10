@@ -28,6 +28,8 @@ header span, small { color: var(--text-secondary); }
 .refresh-button:disabled { cursor: not-allowed; opacity: .6; }
 .window-error { color: var(--signal-error); }
 .inspector { display: grid; grid-template-columns: minmax(28rem, 1fr) minmax(20rem, 30rem); gap: 1rem; min-height: 32rem; }
+.inspector-separator { width: 8px; min-height: 100%; cursor: col-resize; border-radius: 4px; background: var(--border-default); }
+.inspector-separator:hover, .inspector-separator:focus { background: var(--signal-focus); outline: none; }
 .window-list, .window-detail { background: var(--surface-raised); border: 1px solid var(--border-default); border-radius: 8px; padding: 1rem; overflow: auto; }
 .window-list input { width: 100%; box-sizing: border-box; padding: .55rem; background: var(--surface-base); color: inherit; border: 1px solid var(--border-default); border-radius: 5px; }
 .visibility-filter { display: flex; gap: .5rem; margin-top: .75rem; }
@@ -39,9 +41,18 @@ header span, small { color: var(--text-secondary); }
 .state-focused { color: var(--signal-focus); }
 .state-visible { color: var(--signal-success); }
 .state-hidden { color: var(--text-secondary); }
-.window-row.selected { background: #164653; }
+.window-row.selected { background: var(--surface-sidebar); }
 .window-detail pre { white-space: pre-wrap; font: .75rem/1.5 ui-monospace, Consolas, monospace; max-height: 18rem; overflow: auto; }
-dt { color: var(--text-secondary); float: left; clear: left; width: 7rem; } dd { margin-left: 7rem; font-family: ui-monospace, Consolas, monospace; }
+.property-group { margin-top: 1rem; border: 1px solid var(--border-default); border-radius: 6px; overflow: hidden; }
+.property-group-title { margin: 0; padding: .4rem .6rem; background: var(--surface-sidebar); color: var(--text-secondary); font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.property-row { display: grid; grid-template-columns: 7rem minmax(0, 1fr); gap: .75rem; padding: .3rem 0; border-bottom: 1px solid var(--border-default); }
+.property-label { color: var(--text-secondary); }
+.property-value { min-width: 0; color: var(--text-primary); font-family: ui-monospace, Consolas, monospace; overflow-wrap: anywhere; }
+.value-active { color: var(--signal-success); }
+.value-focus { color: var(--signal-focus); }
+.value-muted { color: var(--text-secondary); }
+.relationship-link { display: block; padding: .3rem 0; color: var(--signal-focus); background: transparent; border: 0; cursor: pointer; text-align: left; }
+.property-group pre { margin-top: 0; }
 
 h1,
 p {
