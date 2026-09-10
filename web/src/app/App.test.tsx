@@ -1,10 +1,25 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { App } from './App'
 import type { ActivityWindowSnapshot, DroidScopeClient } from '../local-client/DroidScopeClient'
 
 const emptySnapshot = (): ActivityWindowSnapshot => ({ capturedAtEpochMs: 0, windows: [], activities: [] })
+
+const linkedSnapshot = (): ActivityWindowSnapshot => ({
+  capturedAtEpochMs: 1,
+  windows: [{
+    id: 'window:0', order: 0, title: 'com.demo/.MainActivity', packageName: 'com.demo',
+    componentName: 'com.demo/.MainActivity', userId: 10, displayId: 2, pid: 1234, uid: 1000,
+    focused: true, visible: true, hasSurface: true,
+    relatedActivityId: 'u10:com.demo/.MainActivity', rawBlock: 'window',
+  }],
+  activities: [{
+    id: 'u10:com.demo/.MainActivity', userId: 10, packageName: 'com.demo',
+    componentName: 'com.demo/.MainActivity', pid: 1234, state: 'RESUMED',
+    relatedWindowIds: ['window:0'], rawBlock: 'activity',
+  }],
+})
 
 function clientFor(devices: Awaited<ReturnType<DroidScopeClient['listDevices']>>): DroidScopeClient {
   return {
@@ -120,20 +135,7 @@ describe('App', () => {
 
   it('navigates between a related window and activity from two independent pages', async () => {
     const client = clientFor([{ serial: 'READY', state: 'device', ready: true }])
-    client.getActivityWindowSnapshot = async () => ({
-      capturedAtEpochMs: 1,
-      windows: [{
-        id: 'window:0', order: 0, title: 'com.demo/.MainActivity', packageName: 'com.demo',
-        componentName: 'com.demo/.MainActivity', userId: 0, displayId: 0, pid: 1234, uid: 1000,
-        focused: true, visible: true, hasSurface: true,
-        relatedActivityId: 'u0:com.demo/.MainActivity', rawBlock: 'window',
-      }],
-      activities: [{
-        id: 'u0:com.demo/.MainActivity', userId: 0, packageName: 'com.demo',
-        componentName: 'com.demo/.MainActivity', pid: 1234, state: 'RESUMED',
-        relatedWindowIds: ['window:0'], rawBlock: 'activity',
-      }],
-    })
+    client.getActivityWindowSnapshot = async () => linkedSnapshot()
     render(<App client={client} />)
 
     expect(await screen.findByRole('heading', { name: 'Windows' })).toBeInTheDocument()
@@ -143,6 +145,57 @@ describe('App', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Window: com.demo\/\.MainActivity/ }))
     expect(screen.getByRole('heading', { name: 'Windows' })).toBeInTheDocument()
+  })
+
+  it('groups Window Overview properties and marks its activity relationship', async () => {
+    const client = clientFor([{ serial: 'READY', state: 'device', ready: true }])
+    client.getActivityWindowSnapshot = async () => linkedSnapshot()
+    render(<App client={client} />)
+
+    expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument()
+    const identity = within(screen.getByRole('heading', { name: 'Identity' }).closest('.property-group') as HTMLElement)
+    const runtime = within(screen.getByRole('heading', { name: 'Runtime' }).closest('.property-group') as HTMLElement)
+    const windowState = within(screen.getByRole('heading', { name: 'Window State' }).closest('.property-group') as HTMLElement)
+    const relationship = within(screen.getByRole('heading', { name: 'Relationship' }).closest('.property-group') as HTMLElement)
+    expect(identity.getByText('Package')).toBeInTheDocument()
+    expect(identity.getByText('com.demo', { selector: '.property-value' })).toBeInTheDocument()
+    expect(identity.getByText('Component')).toBeInTheDocument()
+    expect(identity.getByText('com.demo/.MainActivity', { selector: '.property-value' })).toBeInTheDocument()
+    expect(identity.getByText('User')).toBeInTheDocument()
+    expect(identity.getByText('10', { selector: '.property-value' })).toBeInTheDocument()
+    expect(runtime.getByText('PID')).toBeInTheDocument()
+    expect(runtime.getByText('1234', { selector: '.property-value' })).toBeInTheDocument()
+    expect(runtime.getByText('UID')).toBeInTheDocument()
+    expect(runtime.getByText('1000', { selector: '.property-value' })).toBeInTheDocument()
+    expect(runtime.getByText('Display')).toBeInTheDocument()
+    expect(runtime.getByText('2', { selector: '.property-value' })).toBeInTheDocument()
+    expect(windowState.getByText('Focused')).toBeInTheDocument()
+    expect(windowState.getByText('true', { selector: '.property-value' })).toBeInTheDocument()
+    expect(windowState.getByText('Visible')).toBeInTheDocument()
+    expect(windowState.getByText('Has Surface')).toBeInTheDocument()
+    expect(relationship.getByRole('button', { name: 'Activity: com.demo/.MainActivity' })).toHaveClass('relationship-link')
+  })
+
+  it('groups Activity Overview properties and marks resumed and window relationships', async () => {
+    const client = clientFor([{ serial: 'READY', state: 'device', ready: true }])
+    client.getActivityWindowSnapshot = async () => linkedSnapshot()
+    render(<App client={client} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Activities page' }))
+    const identity = within(screen.getByRole('heading', { name: 'Identity' }).closest('.property-group') as HTMLElement)
+    const runtime = within(screen.getByRole('heading', { name: 'Runtime' }).closest('.property-group') as HTMLElement)
+    const relationship = within(screen.getByRole('heading', { name: 'Relationship' }).closest('.property-group') as HTMLElement)
+    expect(identity.getByText('Package')).toBeInTheDocument()
+    expect(identity.getByText('com.demo', { selector: '.property-value' })).toBeInTheDocument()
+    expect(identity.getByText('Component')).toBeInTheDocument()
+    expect(identity.getByText('com.demo/.MainActivity', { selector: '.property-value' })).toBeInTheDocument()
+    expect(identity.getByText('User')).toBeInTheDocument()
+    expect(identity.getByText('10', { selector: '.property-value' })).toBeInTheDocument()
+    expect(runtime.getByText('PID')).toBeInTheDocument()
+    expect(runtime.getByText('1234', { selector: '.property-value' })).toBeInTheDocument()
+    const resumedValue = runtime.getByText('RESUMED', { selector: '.property-value' })
+    expect(resumedValue).toHaveClass('value-active')
+    expect(relationship.getByRole('button', { name: 'Window: com.demo/.MainActivity' })).toHaveClass('relationship-link')
   })
 
   it('shows unlinked items without an association action', async () => {
