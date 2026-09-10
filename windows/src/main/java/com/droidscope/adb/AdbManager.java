@@ -70,7 +70,24 @@ public final class AdbManager {
         return result.output();
     }
 
+    public byte[] dumpSurfaceFlingerProto(String serial) throws IOException, InterruptedException {
+        BinaryCommandResult result = runBinary("-s", serial, "exec-out", "dumpsys", "SurfaceFlinger", "--proto");
+        if (result.exitCode() != 0) {
+            throw new IOException("dumpsys SurfaceFlinger --proto failed");
+        }
+        return result.output();
+    }
+
     private CommandResult run(String... args) throws IOException, InterruptedException {
+        BinaryCommandResult result = runBinary(args);
+        try {
+            return new CommandResult(result.exitCode(), new String(result.output(), StandardCharsets.UTF_8));
+        } catch (Exception error) {
+            throw new IOException("cannot decode adb command output", error);
+        }
+    }
+
+    private BinaryCommandResult runBinary(String... args) throws IOException, InterruptedException {
         List<String> command = new ArrayList<>();
         command.add(adbPath);
         command.addAll(List.of(args));
@@ -84,7 +101,7 @@ public final class AdbManager {
             throw new IOException("adb command timed out: " + String.join(" ", command));
         }
         try {
-            return new CommandResult(process.exitValue(), new String(outputReader.get(1, TimeUnit.SECONDS), StandardCharsets.UTF_8));
+            return new BinaryCommandResult(process.exitValue(), outputReader.get(1, TimeUnit.SECONDS));
         } catch (Exception error) {
             throw new IOException("cannot read adb command output", error);
         }
@@ -105,5 +122,13 @@ public final class AdbManager {
         CommandResult(int exitCode, String output) { this.exitCode = exitCode; this.output = output; }
         int exitCode() { return exitCode; }
         String output() { return output; }
+    }
+
+    private static final class BinaryCommandResult {
+        private final int exitCode;
+        private final byte[] output;
+        BinaryCommandResult(int exitCode, byte[] output) { this.exitCode = exitCode; this.output = output; }
+        int exitCode() { return exitCode; }
+        byte[] output() { return output; }
     }
 }

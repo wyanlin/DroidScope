@@ -60,4 +60,24 @@ describe('HttpDroidScopeClient', () => {
     })
     expect(snapshot.activities[0].relatedWindowIds).toEqual(['window:0'])
   })
+
+  it('loads the unified Inspector snapshot with surfaces', async () => {
+    const payload = {
+      capturedAtEpochMs: 123,
+      serial: 'ABC123',
+      windows: [],
+      activities: [],
+      surfaces: [{ id: 5635, name: 'Layer#5635', canonicalName: 'Layer', type: 'Layer', parentId: 92, childIds: [], layerStack: 0, z: 0, hasBuffer: true, metadata: { '1': 'bb270000' }, relationKind: 'EXACT_METADATA', relatedWindowId: 'window:0' }],
+      relations: { surfaceWindow: [] },
+    }
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(payload)))
+    vi.stubGlobal('fetch', fetch)
+
+    const snapshot = await new HttpDroidScopeClient('token').getInspectorSnapshot('ABC123')
+
+    expect(fetch).toHaveBeenCalledWith('/api/v1/inspector-snapshot?serial=ABC123', {
+      headers: { 'X-DroidScope-Session': 'token' },
+    })
+    expect(snapshot.surfaces[0].id).toBe(5635)
+  })
 })

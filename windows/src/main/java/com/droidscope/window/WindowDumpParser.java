@@ -12,7 +12,10 @@ public final class WindowDumpParser {
     private static final Pattern HEADER = Pattern.compile("(?s)^\\s*Window #(\\d+)\\s+Window\\{[^ ]+\\s+u\\d+\\s+(.+?)}(?:-|\\*|:|$)");
     private static final Pattern DISPLAY = Pattern.compile("mDisplayId=(\\d+)");
     private static final Pattern SESSION = Pattern.compile("mSession=Session\\{[^ ]+\\s+(\\d+):(\\d+)");
+    private static final Pattern SESSION_PID = Pattern.compile("mSession=Session\\{[^ ]+\\s+(\\d+):");
+    private static final Pattern OWNER_UID = Pattern.compile("mOwnerUid=(\\d+)");
     private static final Pattern USER_COMPONENT = Pattern.compile("Window\\{[^ ]+\\s+u(\\d+)\\s+([^}]+)}");
+    private static final Pattern WINDOW_TYPE = Pattern.compile("\\bty=([A-Z_]+)");
 
     public WindowSnapshot parse(String dump) {
         String focusedTarget = focusTarget(dump);
@@ -29,16 +32,16 @@ public final class WindowDumpParser {
             int userId = hasIdentity ? Integer.parseInt(identity.group(1)) : -1;
             String componentName = hasIdentity ? compact(identity.group(2)) : null;
             int displayId = findInt(DISPLAY, raw, 0);
-            Matcher session = SESSION.matcher(raw);
-            int pid = session.find() ? Integer.parseInt(session.group(1)) : -1;
-            session = SESSION.matcher(raw);
-            int uid = session.find() ? Integer.parseInt(session.group(2)) : -1;
+            int pid = findInt(SESSION_PID, raw, -1);
+            Matcher ownerUid = OWNER_UID.matcher(raw);
+            int uid = ownerUid.find() ? Integer.parseInt(ownerUid.group(1)) : legacySessionUid(raw);
+            int windowType = windowType(raw);
             boolean hasSurface = raw.contains("mHasSurface=true");
             boolean visible = hasSurface && raw.contains("isReadyForDisplay()=true");
             String packageName = packageName(title);
             boolean focused = focusedTarget != null && (focusedTarget.equals(title) || focusedTarget.startsWith(title + "-"));
             windows.add(new WindowInfo(order, title, packageName, userId, componentName, displayId, pid, uid,
-                    focused, visible, hasSurface, raw, null));
+                    windowType, focused, visible, hasSurface, raw, null));
         }
         return new WindowSnapshot(windows, focusedTarget);
     }
@@ -61,6 +64,22 @@ public final class WindowDumpParser {
     private static int findInt(Pattern pattern, String value, int fallback) {
         Matcher matcher = pattern.matcher(value);
         return matcher.find() ? Integer.parseInt(matcher.group(1)) : fallback;
+    }
+
+    private static int windowType(String raw) {
+        Matcher matcher = WINDOW_TYPE.matcher(raw);
+        if (!matcher.find()) return -1;
+        switch (matcher.group(1)) {
+            case "BASE_APPLICATION": return 1;
+            case "APPLICATION": return 2;
+            case "APPLICATION_STARTING": return 3;
+            default: return -1;
+        }
+    }
+
+    private static int legacySessionUid(String raw) {
+        Matcher session = SESSION.matcher(raw);
+        return session.find() ? Integer.parseInt(session.group(2)) : -1;
     }
 
     private static String compact(String value) {
