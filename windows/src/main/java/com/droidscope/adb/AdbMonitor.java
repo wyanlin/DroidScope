@@ -3,6 +3,8 @@ package com.droidscope.adb;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.List;
+import java.util.function.Consumer;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -10,13 +12,20 @@ import java.util.concurrent.TimeUnit;
 public final class AdbMonitor implements AutoCloseable {
     private final AdbManager adbManager;
     private final DeviceStateTracker stateTracker = new DeviceStateTracker();
+    private final Consumer<List<AdbDevice>> onDevices;
+    private String lastDevices = "";
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread thread = new Thread(r, "droidscope-adb-monitor");
         thread.setDaemon(true);
         return thread;
     });
 
-    public AdbMonitor(AdbManager adbManager) { this.adbManager = adbManager; }
+    public AdbMonitor(AdbManager adbManager) { this(adbManager, devices -> {}); }
+
+    public AdbMonitor(AdbManager adbManager, Consumer<List<AdbDevice>> onDevices) {
+        this.adbManager = adbManager;
+        this.onDevices = onDevices;
+    }
 
     public void start() {
         executor.scheduleWithFixedDelay(this::poll, 0, 2, TimeUnit.SECONDS);
@@ -25,7 +34,13 @@ public final class AdbMonitor implements AutoCloseable {
     private void poll() {
         try {
             Set<String> currentSerials = new HashSet<>();
-            for (AdbDevice device : adbManager.listDevices()) {
+            List<AdbDevice> devices = adbManager.listDevices();
+            String currentDevices = devices.stream().map(device -> device.serial() + ":" + device.state()).sorted().reduce("", (left, right) -> left + "|" + right);
+            if (!currentDevices.equals(lastDevices)) {
+                lastDevices = currentDevices;
+                onDevices.accept(devices);
+            }
+            for (AdbDevice device : devices) {
                 currentSerials.add(device.serial());
                 if (device.isReady() && stateTracker.isReconnect(device.serial(), device.state())) {
                     try {

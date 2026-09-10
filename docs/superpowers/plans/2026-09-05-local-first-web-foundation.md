@@ -215,7 +215,7 @@ npm --prefix web test -- --run
 npm --prefix web run build
 ```
 
-Expected：测试 PASS，构建生成 `web/dist/index.html` 和本地 assets；产物不得包含 `http://`、`https://` 或 `//cdn` 运行时引用。
+Expected：测试 PASS，构建生成 `web/dist/index.html` 和本地 assets；HTML 的 `src`／`href`、CSS `url()` 以及应用代码主动加载的资源不得指向 `http://`、`https://` 或 `//cdn`。依赖库内部不触发请求的文档字符串和 XML 命名空间不视为运行时引用。
 
 - [ ] **Step 7：提交**
 
@@ -670,7 +670,7 @@ if ($LASTEXITCODE -ne 0) { throw "build failed with exit code $LASTEXITCODE" }
 
 - [ ] **Step 4：实现离线静态资源扫描**
 
-`scripts/verify-offline.mjs` 扫描 `web/dist` 的 HTML、CSS 和 JavaScript，发现以下模式即返回非零退出码：
+`scripts/verify-offline.mjs` 扫描 `web/dist` 的 HTML 的 `src`／`href`、CSS `url()` 与应用代码主动加载的资源 URL，发现以下外部资源引用即返回非零退出码：
 
 ```text
 http://
@@ -680,7 +680,7 @@ fonts.googleapis.com
 fonts.gstatic.com
 ```
 
-允许列表只包含注释中明确记录且不会发起请求的文本；V0.1 默认允许列表为空。
+依赖库内部不触发请求的文档字符串和 XML 命名空间不参与判定；V0.1 不设置外部资源允许列表。
 
 - [ ] **Step 5：更新 `.gitignore`**
 

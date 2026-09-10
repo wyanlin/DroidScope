@@ -6,6 +6,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.FutureTask;
 
 public final class AdbManager {
     private final String adbPath;
@@ -53,16 +54,32 @@ public final class AdbManager {
         return run("-s", serial, "reverse", "tcp:9527", "tcp:9527").exitCode() == 0;
     }
 
+    public String dumpWindows(String serial) throws IOException, InterruptedException {
+        CommandResult result = run("-s", serial, "shell", "dumpsys", "window");
+        if (result.exitCode() != 0) {
+            throw new IOException("dumpsys window failed: " + result.output());
+        }
+        return result.output();
+    }
+
     private CommandResult run(String... args) throws IOException, InterruptedException {
         List<String> command = new ArrayList<>();
         command.add(adbPath);
         command.addAll(List.of(args));
         Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+        FutureTask<byte[]> outputReader = new FutureTask<>(() -> process.getInputStream().readAllBytes());
+        Thread outputThread = new Thread(outputReader, "droidscope-adb-output");
+        outputThread.setDaemon(true);
+        outputThread.start();
         if (!process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
             process.destroyForcibly();
             throw new IOException("adb command timed out: " + String.join(" ", command));
         }
-        return new CommandResult(process.exitValue(), new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
+        try {
+            return new CommandResult(process.exitValue(), new String(outputReader.get(1, TimeUnit.SECONDS), StandardCharsets.UTF_8));
+        } catch (Exception error) {
+            throw new IOException("cannot read adb command output", error);
+        }
     }
 
     private static AdbDevice.State parseState(String state) {

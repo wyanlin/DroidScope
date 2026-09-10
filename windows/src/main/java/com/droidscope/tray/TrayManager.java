@@ -24,6 +24,10 @@ public final class TrayManager implements AutoCloseable {
     }
 
     public static TrayManager start(Path directory, AdbManager adbManager, Runnable onExit) {
+        return start(directory, adbManager, onExit, () -> {});
+    }
+
+    public static TrayManager start(Path directory, AdbManager adbManager, Runnable onExit, Runnable onOpenDroidScope) {
         if (!SystemTray.isSupported()) return null;
         try {
             PopupMenu menu = new PopupMenu();
@@ -32,6 +36,9 @@ public final class TrayManager implements AutoCloseable {
             MenuItem open = new MenuItem("Open Receive Folder");
             open.addActionListener(event -> openDirectory(directory));
             menu.add(open);
+            MenuItem openDroidScope = new MenuItem("Open DroidScope");
+            openDroidScope.addActionListener(event -> onOpenDroidScope.run());
+            menu.add(openDroidScope);
             MenuItem reconnect = new MenuItem("Reconnect");
             reconnect.addActionListener(event -> reconnect(adbManager, icon));
             menu.add(reconnect);

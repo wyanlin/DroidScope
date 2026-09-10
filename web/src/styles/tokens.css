@@ -1,0 +1,13 @@
+:root {
+  color-scheme: dark;
+  --surface-base: #101722;
+  --surface-raised: #182231;
+  --surface-sidebar: #131c28;
+  --border-default: #28364a;
+  --text-primary: #e5eaf2;
+  --text-secondary: #78879c;
+  --signal-focus: #67e8f9;
+  --signal-success: #86efac;
+  --signal-warning: #fcd34d;
+  --signal-error: #fb7185;
+}

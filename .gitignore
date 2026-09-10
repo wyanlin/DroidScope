@@ -7,6 +7,9 @@ android/local.properties
 
 # Generated build output
 build-out/
+web/node_modules/
+web/dist/
+.superpowers/
 
 # Runtime receive and test artifacts
 PhoneReceive/
