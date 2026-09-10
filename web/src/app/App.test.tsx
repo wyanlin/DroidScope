@@ -165,4 +165,17 @@ describe('App', () => {
     expect(await screen.findByRole('button', { name: /SurfaceView/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Activity:/ })).not.toBeInTheDocument()
   })
+
+  it('provides an adjustable inspector separator', async () => {
+    const client = clientFor([{ serial: 'READY', state: 'device', ready: true }])
+    render(<App client={client} />)
+
+    const separator = await screen.findByRole('separator', { name: 'Resize inspector panels' })
+    expect(separator).toHaveAttribute('aria-valuenow', '42')
+    Object.defineProperty(separator.parentElement, 'getBoundingClientRect', { value: () => ({ left: 0, width: 1000 }) })
+    fireEvent.pointerDown(separator)
+    fireEvent.pointerMove(window, { clientX: 600 })
+    fireEvent.pointerUp(window)
+    expect(Number(separator.getAttribute('aria-valuenow'))).toBeGreaterThan(42)
+  })
 })
