@@ -41,7 +41,7 @@ header span, small { color: var(--text-secondary); }
 .state-focused { color: var(--signal-focus); }
 .state-visible { color: var(--signal-success); }
 .state-hidden { color: var(--text-secondary); }
-.window-row.selected { background: #164653; }
+.window-row.selected { background: var(--surface-sidebar); }
 .window-detail pre { white-space: pre-wrap; font: .75rem/1.5 ui-monospace, Consolas, monospace; max-height: 18rem; overflow: auto; }
 .property-group { margin-top: 1rem; border: 1px solid var(--border-default); border-radius: 6px; overflow: hidden; }
 .property-group-title { margin: 0; padding: .4rem .6rem; background: var(--surface-sidebar); color: var(--text-secondary); font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }

@@ -199,6 +199,7 @@ describe('App', () => {
     expect(identity.getByText('10', { selector: '.property-value' })).toBeInTheDocument()
     expect(runtime.getByText('PID')).toBeInTheDocument()
     expect(runtime.getByText('1234', { selector: '.property-value' })).toBeInTheDocument()
+    expect(runtime.getByText('Activity State')).toBeInTheDocument()
     const resumedValue = runtime.getByText('RESUMED', { selector: '.property-value' })
     expect(resumedValue).toHaveClass('value-active')
     expect(relationship.getByRole('button', { name: 'Window: com.demo/.MainActivity' })).toHaveClass('relationship-link')
